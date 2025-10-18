@@ -1,0 +1,366 @@
+Build a production-ready full-stack SaaS called “PortPilot” that auto-generates developer portfolio sites from selected GitHub repositories.
+
+High-level goals
+
+Users sign in with GitHub OAuth.
+
+App lists their repos; user picks which to feature.
+
+App ingests each selected repo: README highlights, languages, topics, stars, last updated, and image assets (README images, /docs or /assets).
+
+App renders a public portfolio at /u/<handle> using a selectable theme (light/dark + 3–5 templates).
+
+Support payments (Stripe) for a Pro tier: custom domain + more themes + more repos.
+
+Ship with clean DX, tests, seed data, and docs. Must run on Replit (single workspace) with .env config.
+
+Tech stack (preferred)
+
+Frontend: Next.js 14 (App Router) + React + TypeScript, Tailwind CSS, shadcn/ui.
+
+Backend: Next.js API routes + Prisma ORM.
+
+DB: PostgreSQL (use Replit DB if needed, but default to Postgres; provide Docker compose file and a Neon/Render fallback).
+
+Auth: NextAuth (Auth.js) with GitHub provider.
+
+GitHub API: Use REST + GraphQL v4 where convenient.
+
+Jobs/Queue: Lightweight background jobs using BullMQ with Upstash Redis (or an in-memory fallback + cron if Redis not available on Replit).
+
+Payments: Stripe (test mode) – webhooks set up.
+
+Images: next/image; pull image URLs from repo README (resolve relative paths), /docs, /assets. Cache to prevent hotlink churn.
+
+Theming: Theme engine with pluggable templates. Ship 4 templates: “Sleek”, “CardGrid”, “Terminal”, “Magazine”.
+
+Content safety: Sanitize README HTML with DOMPurify (server-side via isomorphic-dompurify).
+
+Tests: Vitest + Playwright smoke tests for key flows.
+
+Core features & flows
+1) Authentication
+
+GitHub OAuth via NextAuth.
+
+Scopes: read:user, user:email, repo (only public_repo by default; make private repos a Pro feature).
+
+On first sign-in:
+
+Create user record with GitHub handle, avatar, name, email.
+
+Schedule initial repo sync.
+
+2) Repo discovery & selection
+
+“Connect GitHub” dashboard:
+
+Tab 1: My Repos list with search, language filters, sort by updated/star count.
+
+Each repo shows: name, description, primary language, stars, last updated, and a toggle “Add to portfolio”.
+
+Button: “Sync from GitHub” (rate-limit friendly; show last sync time).
+
+Store user’s selected repo IDs.
+
+3) Ingestion pipeline
+
+For each selected repo:
+
+Fetch: README (raw + rendered), languages breakdown, topics, stars, forks, default branch, homepage, license, last commit date.
+
+Parse README for highlights:
+
+Extract first paragraph as “summary”.
+
+Identify features via headings (e.g., ## Features, ### Features) and bulleted lists (top 5).
+
+Extract “Installation” and “Tech stack” sections if present.
+
+Images:
+
+Collect images from README (absolute + relative paths resolved against default branch), /docs, /assets, limit to 5 per repo.
+
+Validate content-type, store URL + dimensions; don’t download binaries, but cache metadata with ETags.
+
+Detect stack:
+
+Look for package.json (React/Vite/Next), pom.xml/build.gradle (Java/Spring), requirements.txt/pyproject.toml (Python), Dockerfile, etc.
+
+Save a normalized “Project” document for rendering templates.
+
+Rate limiting & caching:
+
+Use conditional requests with ETag/If-None-Match.
+
+Back off on secondary rate limit; queue jobs and retry with exponential backoff.
+
+4) Theme engine & portfolio rendering
+
+Public routes:
+
+/u/[handle] – default theme.
+
+/u/[handle]/[theme] – view in another theme.
+
+Theme engine:
+
+A ThemeProvider that accepts a PortfolioModel:
+
+type PortfolioModel = {
+  user: { name, handle, avatarUrl, bio?, location?, website? };
+  projects: Array<{
+    id, name, description, summary, features: string[],
+    images: { url, alt }[], languages: Record<string, number>,
+    topics: string[], stars, forks, homepage, repoUrl, lastUpdated,
+    stack: { framework?, runtime?, packageManager?, docker?: boolean }
+  }>;
+  social: { github; x?; linkedin?; website? };
+  layout: { themeId; accentColor?; showStats?: boolean }
+}
+
+
+Provide 4 responsive templates:
+
+Sleek: hero + grid cards with cover image, language badges.
+
+CardGrid: Pinterest-style masonry with hover details.
+
+Terminal: monospace, command-prompt aesthetic, animated typing.
+
+Magazine: large image lead-ins + excerpt sections.
+
+Global SEO:
+
+Dynamic OG images per portfolio (title, avatar, selected accent).
+
+5) Dashboard & settings
+
+Tabs: Overview, Repos, Appearance, Billing, Publishing.
+
+Appearance: choose theme, accent color, show/hide language pie chart, reorder projects with drag-n-drop.
+
+Publishing:
+
+Public URL toggle.
+
+Generate sitemap and robots.txt.
+
+Pro: custom domain – provide TXT/CNAME instructions and store mapping table.
+
+6) Billing (Stripe)
+
+Free plan: up to 6 projects, 2 themes, no custom domain, public URL on portpilot.app/u/<handle>.
+
+Pro plan (£5–£9/mo): up to 30 projects, all themes, custom domain, priority sync.
+
+Implement Stripe Checkout + Customer Portal; store subscription status; guard Pro features on server.
+
+7) Webhooks & scheduled sync
+
+GitHub webhook support (repo pushed, topics changed, releases) to re-ingest a project.
+
+Fallback: nightly cron job to refresh metadata for active users.
+
+8) Security & privacy
+
+Server-side sanitize all markdown → HTML.
+
+Never execute user code; only parse text/metadata.
+
+Allow users to remove stored repo data.
+
+Logging with pino; redact tokens.
+
+Data model (Prisma)
+
+Create a schema.prisma like:
+
+model User {
+  id            String  @id @default(cuid())
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  githubId      String   @unique
+  handle        String   @unique
+  name          String?
+  email         String?  @unique
+  avatarUrl     String?
+  plan          Plan     @default(FREE)
+  stripeCustomerId String?
+  portfolios    Portfolio[]
+}
+
+enum Plan { FREE PRO }
+
+model Portfolio {
+  id         String    @id @default(cuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id])
+  themeId    String    @default("sleek")
+  accent     String? 
+  public     Boolean   @default(false)
+  customDomain String?
+  projects   Project[]
+  social     Json?
+}
+
+model Project {
+  id            String   @id @default(cuid())
+  portfolioId   String
+  portfolio     Portfolio @relation(fields: [portfolioId], references: [id])
+  repoId        String   // GitHub repo node_id or id
+  name          String
+  repoUrl       String
+  homepage      String?
+  description   String?
+  summary       String?
+  features      Json      // string[]
+  images        Json      // {url, alt}[]
+  topics        Json      // string[]
+  languages     Json      // {lang: bytes}
+  stars         Int       @default(0)
+  forks         Int       @default(0)
+  lastUpdated   DateTime?
+  stack         Json?     // framework/runtime metadata
+  order         Int       @default(0)
+}
+
+model Integration {
+  id        String  @id @default(cuid())
+  userId    String
+  provider  String  // "github"
+  accessToken  String
+  refreshToken String?
+  scopes    String
+  etagCache Json?   // map of repo->etag
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model SyncJob {
+  id        String   @id @default(cuid())
+  userId    String
+  repoId    String
+  status    String   // queued|running|success|error
+  error     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+API routes (Next.js App Router)
+
+POST /api/auth/github – handled by NextAuth.
+
+GET /api/github/repos – list user repos (cached).
+
+POST /api/selection – save selected repo IDs.
+
+POST /api/sync – enqueue ingestion jobs.
+
+POST /api/webhooks/github – verify signature, re-ingest repo.
+
+GET /api/portfolio – get current portfolio model.
+
+POST /api/portfolio/theme – set theme + accent.
+
+POST /api/portfolio/order – reorder projects.
+
+POST /api/billing/checkout – Stripe Checkout session.
+
+POST /api/billing/webhook – Stripe webhook (customer.subscription.*).
+
+GET /u/[handle] and GET /u/[handle]/[theme] – public pages.
+
+Ingestion details
+
+Prefer GitHub GraphQL for fewer roundtrips; fallback to REST if needed.
+
+README:
+
+Fetch raw markdown from default branch.
+
+Convert to HTML server-side (remark/rehype), then sanitize.
+
+Extract first paragraph + features list:
+
+If headings named “Features” exist, take top bullets (<=5).
+
+Else heuristics: bullet lists near the top.
+
+Images:
+
+Parse markdown image nodes, resolve relative URLs to raw GitHub content.
+
+Only allow common image mime types; max 5 per project.
+
+Languages:
+
+Use /languages endpoint for LOC by language; render a small bar/pie in UI (toggle in Appearance).
+
+UI requirements
+
+Dashboard: built with shadcn/ui; responsive; dark mode.
+
+Drag-n-drop project ordering (dnd-kit).
+
+Theme previews with live data.
+
+Public portfolio passes Lighthouse > 90 for Performance/SEO/Best Practices.
+
+Env & config
+
+Create .env.example:
+
+NEXTAUTH_URL=http://localhost:3000
+NEXTAUTH_SECRET=changeme
+GITHUB_ID=...
+GITHUB_SECRET=...
+DATABASE_URL=postgresql://user:pass@host:5432/portpilot
+STRIPE_SECRET_KEY=sk_test_...
+STRIPE_WEBHOOK_SECRET=whsec_...
+UPSTASH_REDIS_REST_URL=...
+UPSTASH_REDIS_REST_TOKEN=...
+
+
+Provide clear README steps to:
+
+Create GitHub OAuth app and add callback URL /api/auth/callback/github.
+
+Provision Postgres (Neon/Render) and run prisma migrate.
+
+Configure Stripe products (Free/Pro) + prices, set webhook to /api/billing/webhook.
+
+Optional Redis (Upstash) for BullMQ; otherwise fall back to a simple cron re-sync.
+
+Testing
+
+Unit tests for parser utilities (README → features/images).
+
+API route tests (authenticated/unauthenticated).
+
+Playwright E2E: sign-in mock, select repos, publish portfolio, view /u/<handle>.
+
+Nice-to-haves (if time allows)
+
+Custom pages/sections (About Me, Skills, Contact form with email relay).
+
+Import data from GitLab/Bitbucket (behind feature flag).
+
+Domain mapping table + DNS verification endpoint for custom domains.
+
+OpenGraph image generation endpoint for each project card.
+
+Deliverables
+
+Working Next.js app with all routes/components.
+
+Prisma schema + migrations.
+
+Seed script that creates a demo user + 3 fake projects for previews.
+
+README with setup, env, and deployment instructions on Replit.
+
+Basic CI (GitHub Actions) for lint, typecheck, tests.
+
+Please scaffold the full project, generate the pages/components/APIs, and leave TODO comments where secrets are required. Include sample theme JSON/config and at least 4 distinct, polished themes.
+Ensure the app boots locally on Replit and shows a demo portfolio at /u/demo using seeded data if GitHub auth isn’t configured yet.
