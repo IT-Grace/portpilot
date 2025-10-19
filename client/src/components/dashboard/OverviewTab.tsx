@@ -1,33 +1,93 @@
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Link } from "wouter";
 import {
-  Github,
-  Eye,
-  Star,
-  GitFork,
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
   ExternalLink,
-  Palette,
+  Eye,
+  Github,
   Globe,
+  Palette,
+  Star,
   TrendingUp,
 } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Link } from "wouter";
+
+interface DashboardData {
+  user: {
+    name: string | null;
+    handle: string;
+    plan: string;
+  };
+  stats: {
+    totalProjects: number;
+    totalViews: number;
+    totalStars: number;
+    totalForks: number;
+    planName: string;
+    isPro: boolean;
+  };
+  projects: any[];
+  recentActivity: Array<{
+    type: string;
+    message: string;
+    time: string;
+  }>;
+}
 
 export function OverviewTab() {
-  // TODO: Fetch real data from API
-  const stats = {
-    totalProjects: 3,
-    totalViews: 0,
-    totalStars: 42,
-    planName: "Free",
-    isPro: false,
+  const [dashboardData, setDashboardData] = useState<DashboardData | null>(
+    null
+  );
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetchDashboardData();
+  }, []);
+
+  const fetchDashboardData = async () => {
+    try {
+      const response = await fetch("/api/dashboard", {
+        credentials: "include",
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setDashboardData(data);
+      } else {
+        console.error("Failed to fetch dashboard data");
+      }
+    } catch (error) {
+      console.error("Error fetching dashboard data:", error);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const recentActivity = [
-    { type: "sync", message: "Synced 3 repositories", time: "2 hours ago" },
-    { type: "theme", message: "Changed theme to Sleek", time: "1 day ago" },
-    { type: "publish", message: "Published portfolio", time: "2 days ago" },
-  ];
+  if (loading) {
+    return (
+      <div className="space-y-8">
+        <div className="text-muted-foreground">Loading dashboard...</div>
+      </div>
+    );
+  }
+
+  if (!dashboardData) {
+    return (
+      <div className="space-y-8">
+        <div className="text-muted-foreground">
+          Failed to load dashboard data
+        </div>
+      </div>
+    );
+  }
+
+  const { stats, recentActivity } = dashboardData;
 
   return (
     <div className="space-y-8">
@@ -80,9 +140,7 @@ export function OverviewTab() {
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-bold">{stats.totalViews}</div>
-            <p className="text-xs text-muted-foreground mt-1">
-              This month
-            </p>
+            <p className="text-xs text-muted-foreground mt-1">This month</p>
           </CardContent>
         </Card>
 
@@ -112,19 +170,31 @@ export function OverviewTab() {
         </CardHeader>
         <CardContent className="grid gap-4 md:grid-cols-3">
           <Link href="?tab=repos">
-            <Button variant="outline" className="w-full gap-2 justify-start" data-testid="button-quick-repos">
+            <Button
+              variant="outline"
+              className="w-full gap-2 justify-start"
+              data-testid="button-quick-repos"
+            >
               <Github className="h-4 w-4" />
               Add Repositories
             </Button>
           </Link>
           <Link href="?tab=appearance">
-            <Button variant="outline" className="w-full gap-2 justify-start" data-testid="button-quick-appearance">
+            <Button
+              variant="outline"
+              className="w-full gap-2 justify-start"
+              data-testid="button-quick-appearance"
+            >
               <Palette className="h-4 w-4" />
               Customize Theme
             </Button>
           </Link>
           <Link href="/u/demo">
-            <Button variant="outline" className="w-full gap-2 justify-start" data-testid="button-quick-view">
+            <Button
+              variant="outline"
+              className="w-full gap-2 justify-start"
+              data-testid="button-quick-view"
+            >
               <Globe className="h-4 w-4" />
               View Portfolio
               <ExternalLink className="h-3 w-3 ml-auto" />
@@ -146,7 +216,9 @@ export function OverviewTab() {
                 <div className="h-2 w-2 rounded-full bg-primary mt-2" />
                 <div className="flex-1 space-y-1">
                   <p className="text-sm font-medium">{activity.message}</p>
-                  <p className="text-xs text-muted-foreground">{activity.time}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {activity.time}
+                  </p>
                 </div>
               </div>
             ))}

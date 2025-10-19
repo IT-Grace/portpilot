@@ -1,11 +1,9 @@
-import { useState } from "react";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ThemeToggle } from "@/components/ThemeToggle";
-import { OverviewTab } from "@/components/dashboard/OverviewTab";
-import { ReposTab } from "@/components/dashboard/ReposTab";
 import { AppearanceTab } from "@/components/dashboard/AppearanceTab";
 import { BillingTab } from "@/components/dashboard/BillingTab";
+import { OverviewTab } from "@/components/dashboard/OverviewTab";
 import { PublishingTab } from "@/components/dashboard/PublishingTab";
+import { ReposTab } from "@/components/dashboard/ReposTab";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
@@ -15,18 +13,65 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Globe, LogOut, User } from "lucide-react";
+import { useEffect, useState } from "react";
+
+interface CurrentUser {
+  id: string;
+  name: string | null;
+  handle: string;
+  email: string | null;
+  avatarUrl: string | null;
+  plan: string;
+}
 
 export default function Dashboard() {
   const [activeTab, setActiveTab] = useState("overview");
-  
-  // TODO: Get from auth context/session
-  const user = {
-    name: "Demo User",
-    handle: "demo",
-    avatarUrl: null,
-    email: "demo@example.com",
+  const [user, setUser] = useState<CurrentUser | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetchCurrentUser();
+  }, []);
+
+  const fetchCurrentUser = async () => {
+    try {
+      const response = await fetch("/api/user/me", {
+        credentials: "include",
+      });
+
+      if (response.ok) {
+        const userData = await response.json();
+        setUser(userData);
+      } else if (response.status === 401) {
+        // Not authenticated, redirect to sign in
+        window.location.href = "/signin";
+      } else {
+        console.error("Failed to fetch user data");
+      }
+    } catch (error) {
+      console.error("Error fetching current user:", error);
+    } finally {
+      setLoading(false);
+    }
   };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-muted-foreground">Loading...</div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-muted-foreground">Please sign in to continue</div>
+      </div>
+    );
+  }
 
   const handleSignOut = () => {
     // TODO: Implement sign out
@@ -47,14 +92,23 @@ export default function Dashboard() {
             <ThemeToggle />
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" className="gap-2" data-testid="button-user-menu">
+                <Button
+                  variant="ghost"
+                  className="gap-2"
+                  data-testid="button-user-menu"
+                >
                   <Avatar className="h-8 w-8">
-                    <AvatarImage src={user.avatarUrl || undefined} alt={user.name || "User"} />
+                    <AvatarImage
+                      src={user.avatarUrl || undefined}
+                      alt={user.name || "User"}
+                    />
                     <AvatarFallback className="bg-primary/10 text-primary font-medium">
                       {user.name?.[0] || user.handle?.[0] || "U"}
                     </AvatarFallback>
                   </Avatar>
-                  <span className="hidden md:inline-block">{user.name || user.handle}</span>
+                  <span className="hidden md:inline-block">
+                    {user.name || user.handle}
+                  </span>
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-56">
@@ -68,7 +122,10 @@ export default function Dashboard() {
                   Profile
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={handleSignOut} data-testid="menuitem-signout">
+                <DropdownMenuItem
+                  onClick={handleSignOut}
+                  data-testid="menuitem-signout"
+                >
                   <LogOut className="h-4 w-4 mr-2" />
                   Sign Out
                 </DropdownMenuItem>
@@ -80,7 +137,11 @@ export default function Dashboard() {
 
       {/* Main Content */}
       <div className="max-w-7xl mx-auto px-6 py-8">
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-8">
+        <Tabs
+          value={activeTab}
+          onValueChange={setActiveTab}
+          className="space-y-8"
+        >
           <TabsList className="grid w-full grid-cols-5 max-w-3xl">
             <TabsTrigger value="overview" data-testid="tab-overview">
               Overview

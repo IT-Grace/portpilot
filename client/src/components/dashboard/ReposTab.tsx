@@ -1,9 +1,13 @@
-import { useState } from "react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Switch } from "@/components/ui/switch";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -11,18 +15,20 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
+import { formatDistanceToNow } from "date-fns";
 import {
-  Github,
-  Search,
-  RefreshCw,
-  Star,
-  GitFork,
   Clock,
   Filter,
+  GitFork,
+  Github,
+  RefreshCw,
+  Search,
+  Star,
 } from "lucide-react";
-import { formatDistanceToNow } from "date-fns";
+import { useEffect, useState } from "react";
 
-type MockRepo = {
+type Repo = {
   id: string;
   name: string;
   description: string | null;
@@ -30,7 +36,10 @@ type MockRepo = {
   stars: number;
   forks: number;
   lastUpdated: Date;
-  selected: boolean;
+  repoUrl?: string;
+  homepage?: string;
+  topics?: string[];
+  selected?: boolean;
 };
 
 export function ReposTab() {
@@ -38,80 +47,91 @@ export function ReposTab() {
   const [sortBy, setSortBy] = useState("updated");
   const [languageFilter, setLanguageFilter] = useState("all");
   const [syncing, setSyncing] = useState(false);
+  const [repos, setRepos] = useState<Repo[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  // TODO: Fetch from API
-  const [repos, setRepos] = useState<MockRepo[]>([
-    {
-      id: "1",
-      name: "awesome-react-dashboard",
-      description: "A modern, feature-rich dashboard built with React and TypeScript",
-      language: "TypeScript",
-      stars: 24,
-      forks: 5,
-      lastUpdated: new Date(Date.now() - 1000 * 60 * 60 * 24 * 2),
-      selected: true,
-    },
-    {
-      id: "2",
-      name: "ecommerce-mobile-app",
-      description: "Full-stack mobile e-commerce application with payment integration",
-      language: "JavaScript",
-      stars: 12,
-      forks: 3,
-      lastUpdated: new Date(Date.now() - 1000 * 60 * 60 * 24 * 7),
-      selected: true,
-    },
-    {
-      id: "3",
-      name: "cli-tools-collection",
-      description: "Collection of useful command-line tools for developers",
-      language: "Python",
-      stars: 6,
-      forks: 1,
-      lastUpdated: new Date(Date.now() - 1000 * 60 * 60 * 24 * 14),
-      selected: true,
-    },
-    {
-      id: "4",
-      name: "portfolio-website",
-      description: "My personal portfolio website",
-      language: "HTML",
-      stars: 3,
-      forks: 0,
-      lastUpdated: new Date(Date.now() - 1000 * 60 * 60 * 24 * 30),
-      selected: false,
-    },
-  ]);
+  useEffect(() => {
+    fetchDashboardData();
+  }, []);
+
+  const fetchDashboardData = async () => {
+    try {
+      const response = await fetch("/api/dashboard", {
+        credentials: "include",
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setRepos(
+          data.projects.map((project: any) => ({
+            ...project,
+            selected: true, // Default to selected for existing projects
+            lastUpdated: project.lastUpdated 
+              ? new Date(project.lastUpdated) 
+              : new Date(), // Fallback to current date if null/undefined
+          }))
+        );
+      } else {
+        console.error("Failed to fetch dashboard data");
+      }
+    } catch (error) {
+      console.error("Error fetching dashboard data:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const lastSync = new Date(Date.now() - 1000 * 60 * 60 * 2);
-  const selectedCount = repos.filter(r => r.selected).length;
+  const selectedCount = repos.filter((r) => r.selected).length;
   const maxProjects = 6; // TODO: Get from user plan
 
   const handleSync = async () => {
     setSyncing(true);
-    // TODO: Call API to sync repos
-    setTimeout(() => setSyncing(false), 2000);
+    try {
+      const response = await fetch("/api/sync", {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        console.log("Sync completed:", result);
+        // Refresh the dashboard data after sync
+        await fetchDashboardData();
+      } else {
+        console.error("Sync failed:", response.statusText);
+      }
+    } catch (error) {
+      console.error("Error syncing repositories:", error);
+    } finally {
+      setSyncing(false);
+    }
   };
 
   const toggleRepo = (id: string) => {
-    setRepos(prev =>
-      prev.map(r =>
-        r.id === id ? { ...r, selected: !r.selected } : r
-      )
+    setRepos((prev) =>
+      prev.map((r) => (r.id === id ? { ...r, selected: !r.selected } : r))
     );
   };
 
-  const languages = Array.from(new Set(repos.map(r => r.language).filter(Boolean)));
+  const languages = Array.from(
+    new Set(repos.map((r) => r.language).filter(Boolean))
+  );
 
   const filteredRepos = repos
-    .filter(r =>
-      r.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      r.description?.toLowerCase().includes(searchQuery.toLowerCase())
+    .filter(
+      (r) =>
+        r.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        r.description?.toLowerCase().includes(searchQuery.toLowerCase())
     )
-    .filter(r => languageFilter === "all" || r.language === languageFilter)
+    .filter((r) => languageFilter === "all" || r.language === languageFilter)
     .sort((a, b) => {
       if (sortBy === "stars") return b.stars - a.stars;
-      if (sortBy === "updated") return b.lastUpdated.getTime() - a.lastUpdated.getTime();
+      if (sortBy === "updated")
+        return b.lastUpdated.getTime() - a.lastUpdated.getTime();
       return a.name.localeCompare(b.name);
     });
 
@@ -124,6 +144,14 @@ export function ReposTab() {
     };
     return colors[lang || ""] || "hsl(var(--muted-foreground))";
   };
+
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <div className="text-muted-foreground">Loading repositories...</div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -141,7 +169,9 @@ export function ReposTab() {
           <div>
             <CardTitle>GitHub Sync</CardTitle>
             <CardDescription>
-              Last synced {formatDistanceToNow(lastSync, { addSuffix: true })}
+              Last synced {lastSync && !isNaN(lastSync.getTime())
+                ? formatDistanceToNow(lastSync, { addSuffix: true })
+                : "recently"}
             </CardDescription>
           </div>
           <Button
@@ -156,12 +186,15 @@ export function ReposTab() {
         </CardHeader>
         <CardContent>
           <div className="flex items-center gap-2 text-sm">
-            <Badge variant={selectedCount <= maxProjects ? "default" : "destructive"}>
+            <Badge
+              variant={selectedCount <= maxProjects ? "default" : "destructive"}
+            >
               {selectedCount} / {maxProjects} selected
             </Badge>
             {selectedCount > maxProjects && (
               <span className="text-destructive text-sm">
-                Remove {selectedCount - maxProjects} project{selectedCount - maxProjects > 1 ? "s" : ""} or upgrade to Pro
+                Remove {selectedCount - maxProjects} project
+                {selectedCount - maxProjects > 1 ? "s" : ""} or upgrade to Pro
               </span>
             )}
           </div>
@@ -183,13 +216,16 @@ export function ReposTab() {
               />
             </div>
             <Select value={languageFilter} onValueChange={setLanguageFilter}>
-              <SelectTrigger className="w-full md:w-48" data-testid="select-language-filter">
+              <SelectTrigger
+                className="w-full md:w-48"
+                data-testid="select-language-filter"
+              >
                 <Filter className="h-4 w-4 mr-2" />
                 <SelectValue placeholder="All languages" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All languages</SelectItem>
-                {languages.map(lang => (
+                {languages.map((lang) => (
                   <SelectItem key={lang} value={lang!}>
                     {lang}
                   </SelectItem>
@@ -197,7 +233,10 @@ export function ReposTab() {
               </SelectContent>
             </Select>
             <Select value={sortBy} onValueChange={setSortBy}>
-              <SelectTrigger className="w-full md:w-48" data-testid="select-sort-by">
+              <SelectTrigger
+                className="w-full md:w-48"
+                data-testid="select-sort-by"
+              >
                 <SelectValue placeholder="Sort by" />
               </SelectTrigger>
               <SelectContent>
@@ -241,7 +280,9 @@ export function ReposTab() {
                       <div className="flex items-center gap-2">
                         <div
                           className="h-3 w-3 rounded-full"
-                          style={{ backgroundColor: getLanguageColor(repo.language) }}
+                          style={{
+                            backgroundColor: getLanguageColor(repo.language),
+                          }}
                         />
                         <span>{repo.language}</span>
                       </div>
@@ -256,7 +297,14 @@ export function ReposTab() {
                     </div>
                     <div className="flex items-center gap-1">
                       <Clock className="h-4 w-4" />
-                      <span>Updated {formatDistanceToNow(repo.lastUpdated, { addSuffix: true })}</span>
+                      <span>
+                        Updated{" "}
+                        {repo.lastUpdated && !isNaN(repo.lastUpdated.getTime())
+                          ? formatDistanceToNow(repo.lastUpdated, {
+                              addSuffix: true,
+                            })
+                          : "recently"}
+                      </span>
                     </div>
                   </div>
                 </div>
@@ -269,7 +317,9 @@ export function ReposTab() {
           <Card>
             <CardContent className="py-12 text-center">
               <Github className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-              <h3 className="font-semibold text-lg mb-2">No repositories found</h3>
+              <h3 className="font-semibold text-lg mb-2">
+                No repositories found
+              </h3>
               <p className="text-muted-foreground">
                 {searchQuery || languageFilter !== "all"
                   ? "Try adjusting your filters"

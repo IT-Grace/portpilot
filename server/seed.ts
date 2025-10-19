@@ -1,41 +1,47 @@
+import dotenv from "dotenv";
+dotenv.config();
+
+import { portfolios, projects, users } from "@shared/schema";
 import { db } from "./db";
-import { users, portfolios, projects } from "@shared/schema";
-import dashboardImg from "../attached_assets/generated_images/Developer_dashboard_project_screenshot_971254ae.png";
-import ecommerceImg from "../attached_assets/generated_images/E-commerce_mobile_app_screenshot_fcbf7ae1.png";
-import terminalImg from "../attached_assets/generated_images/Terminal_CLI_project_screenshot_9b7e9e50.png";
 
 async function seed() {
   console.log("🌱 Seeding database...");
 
   // Create demo user
-  const [user] = await db.insert(users).values({
-    githubId: "demo-github-id",
-    handle: "demo",
-    name: "Alex Johnson",
-    email: "demo@portpilot.app",
-    avatarUrl: null,
-    bio: "Full-stack developer passionate about building beautiful, functional web applications. I love open source and sharing knowledge with the community.",
-    location: "San Francisco, CA",
-    website: "https://alexjohnson.dev",
-    plan: "FREE",
-  }).returning();
+  const [user] = await db
+    .insert(users)
+    .values({
+      githubId: "demo-github-id",
+      handle: "demo",
+      name: "Alex Johnson",
+      email: "demo@portpilot.app",
+      avatarUrl: null,
+      bio: "Full-stack developer passionate about building beautiful, functional web applications. I love open source and sharing knowledge with the community.",
+      location: "San Francisco, CA",
+      website: "https://alexjohnson.dev",
+      plan: "FREE",
+    })
+    .returning();
 
   console.log("✅ Created demo user");
 
   // Create portfolio
-  const [portfolio] = await db.insert(portfolios).values({
-    userId: user.id,
-    themeId: "sleek",
-    accentColor: "#3b82f6",
-    isPublic: true,
-    showStats: true,
-    social: {
-      github: "https://github.com/demo",
-      x: "https://x.com/demo",
-      linkedin: "https://linkedin.com/in/demo",
-      website: "https://alexjohnson.dev",
-    },
-  }).returning();
+  const [portfolio] = await db
+    .insert(portfolios)
+    .values({
+      userId: user.id,
+      themeId: "sleek",
+      accentColor: "#3b82f6",
+      isPublic: true,
+      showStats: true,
+      social: {
+        github: "https://github.com/demo",
+        x: "https://x.com/demo",
+        linkedin: "https://linkedin.com/in/demo",
+        website: "https://alexjohnson.dev",
+      },
+    })
+    .returning();
 
   console.log("✅ Created portfolio");
 
@@ -47,8 +53,10 @@ async function seed() {
       name: "awesome-react-dashboard",
       repoUrl: "https://github.com/demo/awesome-react-dashboard",
       homepage: "https://dashboard-demo.com",
-      description: "A modern, feature-rich dashboard built with React and TypeScript",
-      summary: "This dashboard provides a complete admin interface with real-time data visualization, user management, and customizable widgets.",
+      description:
+        "A modern, feature-rich dashboard built with React and TypeScript",
+      summary:
+        "This dashboard provides a complete admin interface with real-time data visualization, user management, and customizable widgets.",
       features: [
         "Real-time data updates",
         "Customizable dashboard widgets",
@@ -57,7 +65,10 @@ async function seed() {
         "Responsive design",
       ],
       images: [
-        { url: `/assets/generated_images/Developer_dashboard_project_screenshot_971254ae.png`, alt: "Dashboard screenshot" },
+        {
+          url: "/assets/generated_images/Developer_dashboard_project_screenshot_971254ae.png",
+          alt: "Dashboard screenshot",
+        },
       ],
       topics: ["react", "typescript", "dashboard", "admin"],
       languages: { TypeScript: 45000, JavaScript: 12000, CSS: 5000 },
@@ -78,8 +89,10 @@ async function seed() {
       name: "ecommerce-mobile-app",
       repoUrl: "https://github.com/demo/ecommerce-mobile-app",
       homepage: null,
-      description: "Full-stack mobile e-commerce application with payment integration",
-      summary: "A complete e-commerce solution with product catalog, shopping cart, payment processing, and order management.",
+      description:
+        "Full-stack mobile e-commerce application with payment integration",
+      summary:
+        "A complete e-commerce solution with product catalog, shopping cart, payment processing, and order management.",
       features: [
         "Stripe payment integration",
         "Product search and filters",
@@ -88,7 +101,10 @@ async function seed() {
         "Push notifications",
       ],
       images: [
-        { url: `/assets/generated_images/E-commerce_mobile_app_screenshot_fcbf7ae1.png`, alt: "Mobile app screenshot" },
+        {
+          url: "/assets/generated_images/E-commerce_mobile_app_screenshot_fcbf7ae1.png",
+          alt: "Mobile app screenshot",
+        },
       ],
       topics: ["react-native", "ecommerce", "stripe", "mobile"],
       languages: { JavaScript: 38000, TypeScript: 15000, CSS: 8000 },
@@ -109,7 +125,8 @@ async function seed() {
       repoUrl: "https://github.com/demo/cli-tools-collection",
       homepage: null,
       description: "Collection of useful command-line tools for developers",
-      summary: "A curated set of CLI utilities that boost developer productivity, from file processing to git workflows.",
+      summary:
+        "A curated set of CLI utilities that boost developer productivity, from file processing to git workflows.",
       features: [
         "Git workflow automation",
         "File processing utilities",
@@ -117,7 +134,10 @@ async function seed() {
         "Development server tools",
       ],
       images: [
-        { url: `/assets/generated_images/Terminal_CLI_project_screenshot_9b7e9e50.png`, alt: "CLI tools in action" },
+        {
+          url: "/assets/generated_images/Terminal_CLI_project_screenshot_9b7e9e50.png",
+          alt: "CLI tools in action",
+        },
       ],
       topics: ["cli", "tools", "python", "developer-tools"],
       languages: { Python: 28000, Shell: 5000 },
@@ -136,7 +156,7 @@ async function seed() {
 
   console.log("✅ Created sample projects");
   console.log("\n✨ Seed completed!");
-  console.log(`\n🌐 View demo portfolio at: http://localhost:5000/u/demo`);
+  console.log(`\n🌐 View demo portfolio at: http://localhost:3000/u/demo`);
 
   process.exit(0);
 }

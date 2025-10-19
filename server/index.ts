@@ -1,10 +1,33 @@
-import express, { type Request, Response, NextFunction } from "express";
+import dotenv from "dotenv";
+dotenv.config();
+
+import express, { NextFunction, type Request, Response } from "express";
+import session from "express-session";
+import passport from "./auth";
 import { registerRoutes } from "./routes";
-import { setupVite, serveStatic, log } from "./vite";
+import { log, serveStatic, setupVite } from "./vite";
 
 const app = express();
+app.set("env", process.env.NODE_ENV || "development");
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
+
+// Session middleware
+app.use(
+  session({
+    secret: process.env.AUTH_SECRET || "fallback-secret",
+    resave: false,
+    saveUninitialized: false,
+    cookie: {
+      secure: false, // Set to true in production with HTTPS
+      maxAge: 24 * 60 * 60 * 1000, // 24 hours
+    },
+  })
+);
+
+// Initialize Passport
+app.use(passport.initialize());
+app.use(passport.session());
 
 app.use((req, res, next) => {
   const start = Date.now();
@@ -36,6 +59,39 @@ app.use((req, res, next) => {
   next();
 });
 
+// Auth routes
+app.get("/api/auth/signin/github", passport.authenticate("github"));
+
+app.get(
+  "/api/auth/callback/github",
+  passport.authenticate("github", {
+    failureRedirect: "/?error=auth_failed",
+    failureFlash: false,
+  }),
+  (req, res) => {
+    // Successful authentication, redirect to dashboard
+    console.log("Successfully authenticated user:", req.user);
+    res.redirect("/dashboard");
+  }
+);
+
+app.get("/api/auth/signout", (req, res) => {
+  req.logout((err) => {
+    if (err) {
+      return res.status(500).json({ error: "Logout failed" });
+    }
+    res.redirect("/");
+  });
+});
+
+app.get("/api/auth/session", (req, res) => {
+  if (req.user) {
+    res.json({ user: req.user });
+  } else {
+    res.status(401).json({ error: "Not authenticated" });
+  }
+});
+
 (async () => {
   const server = await registerRoutes(app);
 
@@ -50,9 +106,16 @@ app.use((req, res, next) => {
   // importantly only setup vite in development and after
   // setting up all the other routes so the catch-all route
   // doesn't interfere with the other routes
+  console.log(
+    `Environment: NODE_ENV=${process.env.NODE_ENV}, app.get('env')=${app.get(
+      "env"
+    )}`
+  );
   if (app.get("env") === "development") {
+    console.log("Setting up Vite development server...");
     await setupVite(app, server);
   } else {
+    console.log("Setting up static file serving for production...");
     serveStatic(app);
   }
 
@@ -60,12 +123,8 @@ app.use((req, res, next) => {
   // Other ports are firewalled. Default to 5000 if not specified.
   // this serves both the API and the client.
   // It is the only port that is not firewalled.
-  const port = parseInt(process.env.PORT || '5000', 10);
-  server.listen({
-    port,
-    host: "0.0.0.0",
-    reusePort: true,
-  }, () => {
+  const port = parseInt(process.env.PORT || "3000", 10);
+  server.listen(port, () => {
     log(`serving on port ${port}`);
   });
 })();
