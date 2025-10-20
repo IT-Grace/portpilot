@@ -1,13 +1,13 @@
-import { useRoute } from "wouter";
-import { useQuery } from "@tanstack/react-query";
-import { SleekTheme } from "@/components/themes/SleekTheme";
 import { CardGridTheme } from "@/components/themes/CardGridTheme";
-import { TerminalTheme } from "@/components/themes/TerminalTheme";
 import { MagazineTheme } from "@/components/themes/MagazineTheme";
-import type { PortfolioModel, ThemeId } from "@shared/schema";
+import { SleekTheme } from "@/components/themes/SleekTheme";
+import { TerminalTheme } from "@/components/themes/TerminalTheme";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import type { PortfolioModel, ThemeId } from "@shared/schema";
+import { useQuery } from "@tanstack/react-query";
 import { Globe, Loader2 } from "lucide-react";
+import { useRoute } from "wouter";
 
 export default function Portfolio() {
   const [, params] = useRoute("/u/:handle/:theme?");
@@ -15,8 +15,19 @@ export default function Portfolio() {
   const themeParam = (params?.theme as ThemeId) || null;
 
   // Fetch portfolio data from API
-  const { data: portfolioData, isLoading, error } = useQuery<PortfolioModel>({
+  const {
+    data: portfolioData,
+    isLoading,
+    error,
+  } = useQuery<PortfolioModel>({
     queryKey: ["/api/portfolio", handle],
+    queryFn: async () => {
+      const response = await fetch(`/api/portfolio/${handle}`);
+      if (!response.ok) {
+        throw new Error("Portfolio not found");
+      }
+      return response.json();
+    },
   });
 
   if (isLoading) {
@@ -42,7 +53,10 @@ export default function Portfolio() {
             <p className="text-muted-foreground mb-6">
               The portfolio "@{handle}" doesn't exist or is not published yet.
             </p>
-            <Button onClick={() => window.location.href = "/"} data-testid="button-go-home">
+            <Button
+              onClick={() => (window.location.href = "/")}
+              data-testid="button-go-home"
+            >
               Go to Homepage
             </Button>
           </CardContent>
@@ -52,14 +66,18 @@ export default function Portfolio() {
   }
 
   // Render theme
-  const themeComponents: Record<ThemeId, React.ComponentType<{ data: PortfolioModel }>> = {
+  const themeComponents: Record<
+    ThemeId,
+    React.ComponentType<{ data: PortfolioModel }>
+  > = {
     sleek: SleekTheme,
     cardgrid: CardGridTheme,
     terminal: TerminalTheme,
     magazine: MagazineTheme,
   };
 
-  const ThemeComponent = themeComponents[portfolioData.layout.themeId];
+  const themeId = (themeParam || portfolioData.layout.themeId) as ThemeId;
+  const ThemeComponent = themeComponents[themeId];
 
   return <ThemeComponent data={portfolioData} />;
 }

@@ -1,13 +1,32 @@
-import { useState, useEffect } from "react";
-import type { PortfolioModel } from "@shared/schema";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Github, ExternalLink } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import ProjectGallery from "@/components/ui/ProjectGallery";
+import type { PortfolioModel } from "@shared/schema";
 import { formatDistanceToNow } from "date-fns";
+import { ExternalLink, Github } from "lucide-react";
+import { useEffect, useState } from "react";
 
 export function TerminalTheme({ data }: { data: PortfolioModel }) {
   const [typedText, setTypedText] = useState("");
+  const [selectedProject, setSelectedProject] = useState<any>(null);
   const fullText = `> Initializing portfolio for ${data.user.name}...\n> Loading ${data.projects.length} projects...\n> Ready.`;
+
+  const formatDescription = (description: string) => {
+    if (!description) return null;
+
+    return description.split("\n").map((line, index) => {
+      if (line.trim() === "") {
+        return <br key={index} />;
+      }
+      return <p key={index}>{line}</p>;
+    });
+  };
 
   useEffect(() => {
     let index = 0;
@@ -50,7 +69,8 @@ export function TerminalTheme({ data }: { data: PortfolioModel }) {
           {/* User Info */}
           <div className="mb-8 space-y-2">
             <div className="text-white">
-              <span className="text-green-400">$</span> cat ~/.portfolio/user.txt
+              <span className="text-green-400">$</span> cat
+              ~/.portfolio/user.txt
             </div>
             <div className="pl-4 space-y-1">
               <div>NAME: {data.user.name}</div>
@@ -58,13 +78,19 @@ export function TerminalTheme({ data }: { data: PortfolioModel }) {
               {data.user.location && <div>LOCATION: {data.user.location}</div>}
               {data.user.website && (
                 <div>
-                  WEBSITE: <a href={data.user.website} target="_blank" rel="noopener noreferrer" className="underline hover:text-white">{data.user.website}</a>
+                  WEBSITE:{" "}
+                  <a
+                    href={data.user.website}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="underline hover:text-white"
+                  >
+                    {data.user.website}
+                  </a>
                 </div>
               )}
               {data.user.bio && (
-                <div className="mt-2">
-                  BIO: {data.user.bio}
-                </div>
+                <div className="mt-2">BIO: {data.user.bio}</div>
               )}
             </div>
           </div>
@@ -77,7 +103,9 @@ export function TerminalTheme({ data }: { data: PortfolioModel }) {
               </div>
               <div className="pl-4 grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div>
-                  <div className="text-white font-bold text-2xl">{data.projects.length}</div>
+                  <div className="text-white font-bold text-2xl">
+                    {data.projects.length}
+                  </div>
                   <div className="text-sm">Projects</div>
                 </div>
                 <div>
@@ -94,9 +122,14 @@ export function TerminalTheme({ data }: { data: PortfolioModel }) {
                 </div>
                 <div>
                   <div className="text-white font-bold text-2xl">
-                    {Object.keys(
-                      data.projects.reduce((acc, p) => ({ ...acc, ...p.languages }), {})
-                    ).length}
+                    {
+                      Object.keys(
+                        data.projects.reduce(
+                          (acc, p) => ({ ...acc, ...p.languages }),
+                          {}
+                        )
+                      ).length
+                    }
                   </div>
                   <div className="text-sm">Languages</div>
                 </div>
@@ -117,7 +150,9 @@ export function TerminalTheme({ data }: { data: PortfolioModel }) {
                 <div key={project.id} className="mb-1">
                   drwxr-xr-x {index + 1} user staff{" "}
                   {project.lastUpdated
-                    ? formatDistanceToNow(project.lastUpdated, { addSuffix: true })
+                    ? formatDistanceToNow(project.lastUpdated, {
+                        addSuffix: true,
+                      })
                     : "unknown"}{" "}
                   <span className="text-cyan-400">{project.name}/</span>
                 </div>
@@ -135,13 +170,18 @@ export function TerminalTheme({ data }: { data: PortfolioModel }) {
             return (
               <div key={project.id} className="mb-12">
                 <div className="text-white mb-4">
-                  <span className="text-green-400">$</span> cat ~/projects/{project.name}/README.md
+                  <span className="text-green-400">$</span> cat ~/projects/
+                  {project.name}/README.md
                 </div>
                 <div className="pl-4 space-y-4">
                   {/* Project Header */}
                   <div className="border border-green-400 p-4 rounded bg-black/50">
-                    <h3 className="text-white text-xl font-bold mb-2">{project.name}</h3>
-                    <p className="text-gray-300 mb-4">{project.description}</p>
+                    <h3 className="text-white text-xl font-bold mb-2">
+                      {project.name}
+                    </h3>
+                    <p className="text-gray-300 mb-4">
+                      {project.summary || project.description}
+                    </p>
 
                     {/* Metadata */}
                     <div className="flex flex-wrap gap-4 text-sm mb-4">
@@ -174,7 +214,9 @@ export function TerminalTheme({ data }: { data: PortfolioModel }) {
                         <div className="text-white mb-2">## Topics</div>
                         <div className="flex flex-wrap gap-2">
                           {project.topics.map((topic) => (
-                            <span key={topic} className="text-cyan-400">#{topic}</span>
+                            <span key={topic} className="text-cyan-400">
+                              #{topic}
+                            </span>
                           ))}
                         </div>
                       </div>
@@ -198,16 +240,14 @@ export function TerminalTheme({ data }: { data: PortfolioModel }) {
                         <Github className="inline h-4 w-4 mr-2" />
                         View Repository
                       </button>
-                      {project.homepage && (
-                        <button
-                          onClick={() => window.open(project.homepage!, "_blank")}
-                          className="px-4 py-2 border border-cyan-400 text-cyan-400 hover:bg-cyan-400 hover:text-black transition-colors rounded"
-                          data-testid={`button-demo-${index}`}
-                        >
-                          <ExternalLink className="inline h-4 w-4 mr-2" />
-                          Live Demo
-                        </button>
-                      )}
+                      <button
+                        onClick={() => setSelectedProject(project)}
+                        className="px-4 py-2 border border-cyan-400 text-cyan-400 hover:bg-cyan-400 hover:text-black transition-colors rounded"
+                        data-testid={`button-details-${index}`}
+                      >
+                        <ExternalLink className="inline h-4 w-4 mr-2" />
+                        Project Details
+                      </button>
                     </div>
                   </div>
                 </div>
@@ -269,7 +309,8 @@ export function TerminalTheme({ data }: { data: PortfolioModel }) {
           {/* Footer */}
           <div className="mt-12 pt-8 border-t border-green-400/30">
             <div className="text-center text-sm text-gray-500">
-              © {new Date().getFullYear()} {data.user.name} | Powered by PortPilot
+              © {new Date().getFullYear()} {data.user.name} | Powered by
+              PortPilot
             </div>
             <div className="text-center mt-4">
               <span className="text-green-400 animate-pulse">_</span>
@@ -277,6 +318,115 @@ export function TerminalTheme({ data }: { data: PortfolioModel }) {
           </div>
         </div>
       </div>
+
+      {/* Project Detail Modal */}
+      <Dialog
+        open={!!selectedProject}
+        onOpenChange={(open) => !open && setSelectedProject(null)}
+      >
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto bg-background text-foreground">
+          {selectedProject && (
+            <>
+              <DialogHeader>
+                <DialogTitle className="text-2xl font-bold mb-2">
+                  {selectedProject.name}
+                </DialogTitle>
+                <div className="flex flex-wrap gap-2 mb-4">
+                  {selectedProject.topics?.map((topic: string) => (
+                    <Badge key={topic} variant="secondary" className="text-xs">
+                      {topic}
+                    </Badge>
+                  ))}
+                </div>
+              </DialogHeader>
+
+              <div className="space-y-6">
+                {selectedProject.description && (
+                  <div>
+                    <h3 className="text-lg font-semibold mb-2">Description</h3>
+                    <div className="prose prose-sm max-w-none">
+                      {formatDescription(selectedProject.description)}
+                    </div>
+                  </div>
+                )}
+
+                {selectedProject.features &&
+                  selectedProject.features.length > 0 && (
+                    <div>
+                      <h3 className="text-lg font-semibold mb-2">
+                        Key Features
+                      </h3>
+                      <ul className="list-disc list-inside space-y-1">
+                        {selectedProject.features.map(
+                          (feature: string, index: number) => (
+                            <li key={index} className="text-sm">
+                              {feature}
+                            </li>
+                          )
+                        )}
+                      </ul>
+                    </div>
+                  )}
+
+                {selectedProject.technologies &&
+                  selectedProject.technologies.length > 0 && (
+                    <div>
+                      <h3 className="text-lg font-semibold mb-2">
+                        Technologies
+                      </h3>
+                      <div className="flex flex-wrap gap-2">
+                        {selectedProject.technologies?.map((tech: string) => (
+                          <Badge
+                            key={tech}
+                            variant="outline"
+                            className="text-xs"
+                          >
+                            {tech}
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                {selectedProject.images &&
+                  selectedProject.images.length > 0 && (
+                    <div>
+                      <h3 className="text-lg font-semibold mb-2">Gallery</h3>
+                      <ProjectGallery images={selectedProject.images} />
+                    </div>
+                  )}
+
+                <div className="flex gap-4 pt-4">
+                  {selectedProject.repoUrl && (
+                    <Button asChild variant="outline">
+                      <a
+                        href={selectedProject.repoUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        <Github className="w-4 h-4 mr-2" />
+                        View Source
+                      </a>
+                    </Button>
+                  )}
+                  {selectedProject.liveUrl && (
+                    <Button asChild>
+                      <a
+                        href={selectedProject.liveUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        <ExternalLink className="w-4 h-4 mr-2" />
+                        Live Demo
+                      </a>
+                    </Button>
+                  )}
+                </div>
+              </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -1,28 +1,94 @@
-import { useState } from "react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+import { CardGridTheme } from "@/components/themes/CardGridTheme";
+import { MagazineTheme } from "@/components/themes/MagazineTheme";
+import { SleekTheme } from "@/components/themes/SleekTheme";
+import { TerminalTheme } from "@/components/themes/TerminalTheme";
 import { Badge } from "@/components/ui/badge";
-import { Switch } from "@/components/ui/switch";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
-import { themes, type ThemeId } from "@shared/schema";
-import { Check, Crown, GripVertical } from "lucide-react";
-import dashboardImg from "@assets/generated_images/Developer_dashboard_project_screenshot_971254ae.png";
-import ecommerceImg from "@assets/generated_images/E-commerce_mobile_app_screenshot_fcbf7ae1.png";
-import terminalImg from "@assets/generated_images/Terminal_CLI_project_screenshot_9b7e9e50.png";
+import { Switch } from "@/components/ui/switch";
+import { themes, type PortfolioModel, type ThemeId } from "@shared/schema";
+import { Check, Crown, Eye, GripVertical } from "lucide-react";
+import { useEffect, useState } from "react";
+
+interface DashboardData {
+  user: {
+    name: string | null;
+    handle: string;
+    plan: string;
+  };
+  projects: Array<{
+    id: string;
+    name: string;
+    description: string | null;
+    language: string | null;
+    stars: number;
+    forks: number;
+    lastUpdated: Date;
+    repoUrl?: string;
+    homepage?: string;
+    topics?: string[];
+    selected?: boolean;
+  }>;
+}
 
 export function AppearanceTab() {
   const [selectedTheme, setSelectedTheme] = useState<ThemeId>("sleek");
   const [accentColor, setAccentColor] = useState("#3b82f6");
   const [showStats, setShowStats] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [dashboardData, setDashboardData] = useState<DashboardData | null>(
+    null
+  );
+  const [selectedProjects, setSelectedProjects] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const userPlan = "FREE"; // TODO: Get from context
+  useEffect(() => {
+    fetchData();
+  }, []);
 
-  const themePreviewImages: Record<ThemeId, string> = {
-    sleek: dashboardImg,
-    cardgrid: ecommerceImg,
-    terminal: terminalImg,
-    magazine: dashboardImg,
+  const fetchData = async () => {
+    try {
+      // Fetch dashboard data to get projects and user info
+      const dashboardResponse = await fetch("/api/dashboard", {
+        credentials: "include",
+      });
+
+      if (dashboardResponse.ok) {
+        const data = await dashboardResponse.json();
+        setDashboardData(data);
+
+        // Filter selected projects from server data
+        const selected = data.projects.filter((p: any) => p.selected === true);
+        console.log("Selected projects with analysis data:", selected);
+        setSelectedProjects(selected);
+      }
+
+      // Fetch current portfolio settings
+      const portfolioResponse = await fetch(
+        `/api/portfolio/${dashboardData?.user?.handle || "IT-Grace"}`,
+        {
+          credentials: "include",
+        }
+      );
+
+      if (portfolioResponse.ok) {
+        const portfolioData = await portfolioResponse.json();
+        setSelectedTheme(portfolioData.layout?.themeId || "sleek");
+        setAccentColor(portfolioData.layout?.accentColor || "#3b82f6");
+        setShowStats(portfolioData.layout?.showStats !== false);
+      }
+    } catch (error) {
+      console.error("Error fetching data:", error);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const accentColors = [
@@ -34,11 +100,110 @@ export function AppearanceTab() {
     { name: "Teal", value: "#14b8a6" },
   ];
 
+  // Create theme preview components
+  const themeComponents: Record<
+    ThemeId,
+    React.ComponentType<{ data: PortfolioModel }>
+  > = {
+    sleek: SleekTheme,
+    cardgrid: CardGridTheme,
+    terminal: TerminalTheme,
+    magazine: MagazineTheme,
+  };
+
+  // Create preview data for themes
+  const createPreviewData = (): PortfolioModel => {
+    if (!dashboardData) {
+      return {
+        user: {
+          name: "Loading...",
+          handle: "loading",
+          avatarUrl: null,
+          bio: null,
+          location: null,
+          website: null,
+        },
+        projects: [],
+        social: {},
+        layout: {
+          themeId: selectedTheme,
+          accentColor,
+          showStats,
+        },
+      };
+    }
+
+    return {
+      user: {
+        name: dashboardData.user.name,
+        handle: dashboardData.user.handle,
+        avatarUrl: null, // Will be populated from actual user data
+        bio: null,
+        location: null,
+        website: null,
+      },
+      projects: selectedProjects.slice(0, 3).map((p) => ({
+        id: p.id,
+        name: p.name,
+        description: p.description,
+        summary: p.description || `A ${p.language || "code"} project`,
+        features: [],
+        images: [],
+        languages: p.language ? { [p.language]: 100 } : {},
+        topics: p.topics || [],
+        stars: p.stars,
+        forks: p.forks,
+        homepage: p.homepage,
+        repoUrl: p.repoUrl,
+        lastUpdated: p.lastUpdated,
+        stack: {},
+      })),
+      social: {},
+      layout: {
+        themeId: selectedTheme,
+        accentColor,
+        showStats,
+      },
+    };
+  };
+
   const handleSave = async () => {
     setSaving(true);
-    // TODO: Call API to save appearance settings
-    setTimeout(() => setSaving(false), 1000);
+    try {
+      const response = await fetch("/api/portfolio/theme", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        credentials: "include",
+        body: JSON.stringify({
+          themeId: selectedTheme,
+          accentColor,
+          showStats,
+        }),
+      });
+
+      if (response.ok) {
+        console.log("Theme saved successfully");
+      } else {
+        console.error("Failed to save theme");
+      }
+    } catch (error) {
+      console.error("Error saving theme:", error);
+    } finally {
+      setSaving(false);
+    }
   };
+
+  if (loading) {
+    return (
+      <div className="space-y-8">
+        <div className="text-muted-foreground">
+          Loading appearance settings...
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-8">
@@ -61,8 +226,17 @@ export function AppearanceTab() {
         <CardContent>
           <div className="grid gap-6 md:grid-cols-2">
             {themes.map((theme) => {
-              const isLocked = theme.isPro && userPlan !== "PRO";
+              const isLocked =
+                theme.isPro && dashboardData?.user?.plan !== "PRO";
               const isSelected = selectedTheme === theme.id;
+              const ThemeComponent = themeComponents[theme.id];
+              const previewData = {
+                ...createPreviewData(),
+                layout: {
+                  ...createPreviewData().layout,
+                  themeId: theme.id,
+                },
+              };
 
               return (
                 <div key={theme.id} className="relative">
@@ -71,20 +245,25 @@ export function AppearanceTab() {
                     disabled={isLocked}
                     className={`
                       w-full text-left rounded-lg border-2 transition-all
-                      ${isSelected 
-                        ? "border-primary bg-primary/5" 
-                        : "border-border hover-elevate"
+                      ${
+                        isSelected
+                          ? "border-primary bg-primary/5"
+                          : "border-border hover-elevate"
                       }
-                      ${isLocked ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}
+                      ${
+                        isLocked
+                          ? "opacity-50 cursor-not-allowed"
+                          : "cursor-pointer"
+                      }
                     `}
                     data-testid={`button-theme-${theme.id}`}
                   >
-                    <div className="aspect-video rounded-t-md overflow-hidden bg-muted">
-                      <img
-                        src={themePreviewImages[theme.id]}
-                        alt={theme.name}
-                        className="w-full h-full object-cover"
-                      />
+                    <div className="aspect-video rounded-t-md overflow-hidden bg-muted relative">
+                      <div className="w-full h-full scale-[0.3] origin-top-left transform-gpu">
+                        <div className="w-[333%] h-[333%]">
+                          <ThemeComponent data={previewData} />
+                        </div>
+                      </div>
                     </div>
                     <div className="p-4">
                       <div className="flex items-start justify-between gap-2 mb-2">
@@ -144,7 +323,11 @@ export function AppearanceTab() {
                   onClick={() => setAccentColor(color.value)}
                   className={`
                     aspect-square rounded-lg border-2 transition-all hover-elevate
-                    ${isSelected ? "border-foreground scale-110" : "border-border"}
+                    ${
+                      isSelected
+                        ? "border-foreground scale-110"
+                        : "border-border"
+                    }
                   `}
                   style={{ backgroundColor: color.value }}
                   data-testid={`button-color-${color.name.toLowerCase()}`}
@@ -199,19 +382,63 @@ export function AppearanceTab() {
         </CardHeader>
         <CardContent>
           <div className="space-y-3">
-            {["awesome-react-dashboard", "ecommerce-mobile-app", "cli-tools-collection"].map((project, index) => (
-              <div
-                key={project}
-                className="flex items-center gap-4 p-4 rounded-lg border border-border bg-card hover-elevate transition-all cursor-move"
-                data-testid={`project-order-${index}`}
-              >
-                <GripVertical className="h-5 w-5 text-muted-foreground" />
-                <div className="flex-1">
-                  <p className="font-medium">{project}</p>
-                  <p className="text-sm text-muted-foreground">Position {index + 1}</p>
+            {selectedProjects.length > 0 ? (
+              selectedProjects.map((project, index) => (
+                <div
+                  key={project.id}
+                  className="flex items-center gap-4 p-4 rounded-lg border border-border bg-card hover-elevate transition-all cursor-move"
+                  data-testid={`project-order-${index}`}
+                >
+                  <GripVertical className="h-5 w-5 text-muted-foreground" />
+                  <div className="flex-1">
+                    <p className="font-medium">{project.name}</p>
+                    <p className="text-sm text-muted-foreground">
+                      {project.description ||
+                        `A ${project.language || "code"} project`}
+                    </p>
+                  </div>
+                  <div className="text-sm text-muted-foreground">
+                    Position {index + 1}
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div className="text-center py-8 text-muted-foreground">
+                <p>No projects selected</p>
+                <p className="text-sm">
+                  Go to the Repos tab to select projects for your portfolio
+                </p>
+              </div>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Live Preview */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Eye className="h-5 w-5" />
+            Live Preview
+          </CardTitle>
+          <CardDescription>
+            See how your portfolio will look with current settings
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="border rounded-lg overflow-hidden bg-background">
+            <div className="w-full h-96 overflow-hidden">
+              <div className="w-full h-full scale-50 origin-top-left transform-gpu">
+                <div className="w-[200%] h-[200%]">
+                  {(() => {
+                    const SelectedThemeComponent =
+                      themeComponents[selectedTheme];
+                    const previewData = createPreviewData();
+                    return <SelectedThemeComponent data={previewData} />;
+                  })()}
                 </div>
               </div>
-            ))}
+            </div>
           </div>
         </CardContent>
       </Card>

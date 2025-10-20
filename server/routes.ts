@@ -1,6 +1,10 @@
 import type { Express } from "express";
+import express from "express";
 import { createServer, type Server } from "http";
+import path from "path";
+import { ProjectAnalyzer } from "./services/projectAnalyzer";
 import { storage } from "./storage";
+import { deleteFile, getFileUrl, imageUpload } from "./utils/fileUpload";
 
 // GitHub API function to fetch repositories
 async function fetchGitHubRepositories(accessToken: string): Promise<any[]> {
@@ -103,13 +107,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
           id: p.id,
           name: p.name,
           description: p.description,
+          summary: p.summary,
+          detailedDescription: p.detailedDescription,
+          features: p.features || [],
+          images: p.images || [],
           language: p.languages ? Object.keys(p.languages)[0] : null, // Get primary language from languages object
           stars: p.stars || 0,
           forks: p.forks || 0,
           lastUpdated: p.lastUpdated,
+          lastAnalyzed: p.lastAnalyzed,
+          analyzed: p.analyzed || false,
           repoUrl: p.repoUrl,
           homepage: p.homepage,
           topics: p.topics || [],
+          stack: p.stack,
+          selected: p.selected !== false, // Default to true if not set
         })),
         recentActivity: [
           // TODO: Implement activity tracking
@@ -147,8 +159,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
           .json({ error: "Portfolio not found or not public" });
       }
 
-      // Get projects
-      const projects = await storage.getProjects(portfolio.id);
+      // Get projects (only selected ones for public portfolio)
+      const allProjects = await storage.getProjects(portfolio.id);
+      const selectedProjects = allProjects.filter((p) => p.selected === true);
 
       // Build portfolio model
       const portfolioModel = {
@@ -160,11 +173,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
           location: user.location,
           website: user.website,
         },
-        projects: projects.map((p) => ({
+        projects: selectedProjects.map((p) => ({
           id: p.id,
           name: p.name,
           description: p.description,
           summary: p.summary,
+          detailedDescription: p.detailedDescription,
           features: p.features || [],
           images: p.images || [],
           languages: p.languages || {},
@@ -213,11 +227,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Get GitHub integration
       const integration = await storage.getIntegration(userId, "github");
       if (!integration) {
-        return res
-          .status(400)
-          .json({
-            error: "GitHub integration not found. Please re-authenticate.",
-          });
+        return res.status(400).json({
+          error: "GitHub integration not found. Please re-authenticate.",
+        });
       }
 
       // Get or create portfolio
@@ -241,15 +253,40 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Sync repositories to database
       let syncedCount = 0;
+      let updatedCount = 0;
+      let removedCount = 0;
+      const existingProjects = await storage.getProjects(portfolio.id);
+
+      // Create a set of current GitHub repo URLs for efficient lookup
+      const currentRepoUrls = new Set(repos.map((repo) => repo.html_url));
+
+      // Remove projects that no longer exist on GitHub
+      for (const project of existingProjects) {
+        if (project.repoUrl && !currentRepoUrls.has(project.repoUrl)) {
+          try {
+            await storage.deleteProject(project.id);
+            removedCount++;
+            console.log(
+              `Removed project ${project.name} (no longer exists on GitHub)`
+            );
+          } catch (error) {
+            console.error(`Error removing project ${project.name}:`, error);
+          }
+        }
+      }
+
+      // Refresh existing projects list after removals
+      const updatedExistingProjects = await storage.getProjects(portfolio.id);
+
       for (const repo of repos) {
         try {
           // Check if project already exists
-          const existingProject = await storage.getProjects(portfolio.id);
-          const exists = existingProject.some(
+          const existingProject = updatedExistingProjects.find(
             (p) => p.repoUrl === repo.html_url
           );
 
-          if (!exists) {
+          if (!existingProject) {
+            // Create new project
             await storage.createProject({
               portfolioId: portfolio.id,
               repoId: repo.id.toString(),
@@ -266,23 +303,428 @@ export async function registerRoutes(app: Express): Promise<Server> {
               features: [],
               images: [],
               lastUpdated: new Date(repo.updated_at),
+              analyzed: false,
             });
             syncedCount++;
+          } else {
+            // Update existing project with latest data from GitHub
+            const repoLastUpdated = new Date(repo.updated_at);
+            const projectLastUpdated = existingProject.lastUpdated
+              ? new Date(existingProject.lastUpdated)
+              : new Date(0); // Use epoch if null
+
+            // Check if the repo has been updated since we last synced
+            const hasContentUpdates = repoLastUpdated > projectLastUpdated;
+            const hasMetadataUpdates =
+              existingProject.stars !== repo.stargazers_count ||
+              existingProject.forks !== repo.forks_count ||
+              existingProject.description !== repo.description;
+
+            if (hasContentUpdates || hasMetadataUpdates) {
+              const updateData: any = {
+                name: repo.name,
+                description: repo.description,
+                summary: repo.description || existingProject.summary,
+                homepage: repo.homepage,
+                stars: repo.stargazers_count,
+                forks: repo.forks_count,
+                languages: repo.language
+                  ? { [repo.language]: 100 }
+                  : existingProject.languages,
+                topics: repo.topics || [],
+                lastUpdated: repoLastUpdated,
+              };
+
+              // If repo content was updated (not just metadata), mark as needing re-analysis
+              if (hasContentUpdates) {
+                console.log(
+                  `Repo ${repo.name} has been updated and may need re-analysis`
+                );
+              }
+
+              await storage.updateProject(existingProject.id, updateData);
+              updatedCount++;
+            }
           }
         } catch (error) {
           console.error(`Error syncing repo ${repo.name}:`, error);
         }
       }
 
+      const message = [
+        syncedCount > 0 ? `${syncedCount} new repositories` : null,
+        updatedCount > 0 ? `${updatedCount} updated repositories` : null,
+        removedCount > 0 ? `${removedCount} removed repositories` : null,
+      ]
+        .filter(Boolean)
+        .join(", ");
+
       res.json({
         success: true,
-        message: `Synced ${syncedCount} new repositories`,
+        message: message
+          ? `Synced ${message}`
+          : "All repositories are up to date",
         totalRepos: repos.length,
         syncedCount,
+        updatedCount,
+        removedCount,
       });
     } catch (error: any) {
       console.error("Error syncing repositories:", error);
       res.status(500).json({ error: "Failed to sync repositories" });
+    }
+  });
+
+  // Project Analysis - Analyze repository with AI
+  app.post("/api/projects/:projectId/analyze", async (req, res) => {
+    try {
+      if (!req.user) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+
+      const { projectId } = req.params;
+      const userId = (req.user as any).id;
+
+      // Get the project and verify ownership
+      const project = await storage.getProject(projectId);
+      if (!project) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+
+      // Verify user owns this project through portfolio
+      const portfolio = await storage.getPortfolio(userId);
+      if (!portfolio || project.portfolioId !== portfolio.id) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+
+      // Extract GitHub repo info from project.repoUrl
+      const repoMatch = project.repoUrl.match(
+        /github\.com\/([^\/]+)\/([^\/]+)/
+      );
+      if (!repoMatch) {
+        return res.status(400).json({ error: "Invalid GitHub repository URL" });
+      }
+
+      const [, owner, repo] = repoMatch;
+
+      // Check if OpenAI API key is configured
+      if (!process.env.OPENAI_API_KEY) {
+        return res.status(400).json({
+          error:
+            "AI analysis not configured. Please add OPENAI_API_KEY to environment variables.",
+        });
+      }
+
+      // Validate OpenAI API key format
+      if (!process.env.OPENAI_API_KEY.startsWith("sk-")) {
+        return res.status(400).json({
+          error:
+            "Invalid OpenAI API key format. Please check your OPENAI_API_KEY environment variable.",
+        });
+      }
+
+      // Get GitHub access token for API calls
+      const integration = await storage.getIntegration(userId, "github");
+      if (!integration) {
+        return res.status(400).json({
+          error:
+            "GitHub integration not found. Please reconnect your GitHub account.",
+        });
+      }
+
+      const accessToken = integration.accessToken;
+
+      // Use ProjectAnalyzer
+      const analyzer = new ProjectAnalyzer(
+        process.env.OPENAI_API_KEY,
+        accessToken
+      );
+
+      // Perform AI analysis with fallback
+      let analysis;
+      try {
+        analysis = await analyzer.analyzeRepository(
+          owner,
+          repo.replace(".git", "")
+        );
+      } catch (aiError) {
+        console.error("AI analysis failed, using fallback:", aiError);
+
+        // Fallback analysis if AI fails
+        analysis = {
+          summary: `${project.name} is a ${
+            project.description || "software project"
+          } that demonstrates modern development practices. This project showcases technical expertise and attention to detail in software development.`,
+          detailedDescription: `${project.name} represents a well-architected ${
+            project.description || "software solution"
+          } built with modern development practices and industry standards.\n\nThe project demonstrates strong technical implementation using ${
+            Object.keys(project.languages || {})[0] || "modern technologies"
+          } and follows established patterns for maintainable code. The architecture supports scalability and follows best practices for software development.\n\nWith ${
+            project.stars
+          } stars and ${
+            project.forks
+          } forks on GitHub, this project shows community engagement and demonstrates the developer's ability to create valuable, reusable software solutions. The codebase reflects attention to detail and professional development standards.\n\nThis project serves as an excellent example of modern software development practices and showcases technical capabilities in ${
+            Object.keys(project.languages || {})[0] || "software engineering"
+          }.`,
+          features: [
+            "Well-structured and maintainable codebase",
+            "Modern development practices and patterns",
+            project.description
+              ? "Comprehensive project documentation"
+              : "Professional development standards",
+            `Built with ${
+              Object.keys(project.languages || {})[0] || "modern technologies"
+            }`,
+            "Community engagement and open-source contribution",
+          ].slice(0, 5),
+          techStack: {
+            framework: Object.keys(project.languages || {})[0] || "JavaScript",
+            runtime: "Node.js",
+            packageManager: "npm",
+          },
+          projectType: "web-app" as const,
+          suggestedImages: [
+            {
+              type: "interface",
+              prompt: `A professional, clean interface for ${project.name} showing its main dashboard with modern UI elements, clean typography, and intuitive navigation`,
+            },
+            {
+              type: "screenshot",
+              prompt: `A detailed view of ${project.name} application interface showcasing key features and functionality with modern design patterns`,
+            },
+          ],
+          demoUrl: project.homepage || undefined,
+          keyInsights: [
+            `This project showcases expertise in ${
+              Object.keys(project.languages || {})[0] || "software development"
+            } and modern development practices`,
+            `Repository demonstrates professional code quality with ${project.stars} stars and active community engagement`,
+            `Architecture follows industry best practices for scalable and maintainable software solutions`,
+          ],
+        };
+      }
+
+      // Update project with analysis results (keeping existing manually uploaded images)
+      const updatedProject = await storage.updateProject(projectId, {
+        summary: analysis.summary,
+        detailedDescription: analysis.detailedDescription,
+        features: (analysis as any).keyFeatures || analysis.features || [], // Handle both field names
+        stack: analysis.techStack,
+        lastAnalyzed: new Date(),
+        analyzed: true,
+        // Keep existing images - they are manually managed now
+      });
+
+      res.json({
+        success: true,
+        analysis,
+        project: updatedProject,
+      });
+    } catch (error: any) {
+      console.error("Error analyzing project:", error);
+      res.status(500).json({
+        error: error.message || "Failed to analyze project",
+        details:
+          process.env.NODE_ENV === "development" ? error.stack : undefined,
+      });
+    }
+  });
+
+  // Project Images - Upload image file to project
+  app.post(
+    "/api/projects/:projectId/images",
+    imageUpload.single("image"),
+    async (req, res) => {
+      try {
+        if (!req.user) {
+          return res.status(401).json({ error: "Not authenticated" });
+        }
+
+        const { projectId } = req.params;
+        const { alt } = req.body;
+        const userId = (req.user as any).id;
+
+        if (!req.file) {
+          return res.status(400).json({ error: "No image file provided" });
+        }
+
+        // Verify ownership
+        const project = await storage.getProject(projectId);
+        if (!project) {
+          return res.status(404).json({ error: "Project not found" });
+        }
+
+        const portfolio = await storage.getPortfolio(userId);
+        if (!portfolio || project.portfolioId !== portfolio.id) {
+          return res.status(403).json({ error: "Access denied" });
+        }
+
+        // Add image to project
+        const currentImages = project.images || [];
+        const imageUrl = getFileUrl(req.file.filename);
+        const newImages = [
+          ...currentImages,
+          {
+            url: imageUrl,
+            alt: alt || req.file.originalname,
+            filename: req.file.filename, // Store filename for deletion
+          },
+        ];
+
+        const updatedProject = await storage.updateProject(projectId, {
+          images: newImages,
+        });
+
+        res.json({ success: true, project: updatedProject });
+      } catch (error: any) {
+        console.error("Error uploading image:", error);
+
+        // Clean up uploaded file on error
+        if (req.file) {
+          deleteFile(req.file.filename);
+        }
+
+        // Handle multer errors specifically
+        if (error.code === "LIMIT_FILE_SIZE") {
+          return res
+            .status(400)
+            .json({ error: "File size too large. Maximum size is 5MB." });
+        }
+        if (error.message.includes("Only image files are allowed")) {
+          return res.status(400).json({ error: error.message });
+        }
+
+        res.status(500).json({ error: "Failed to upload image" });
+      }
+    }
+  );
+
+  // Project Images - Remove image from project
+  app.delete(
+    "/api/projects/:projectId/images/:imageIndex",
+    async (req, res) => {
+      try {
+        if (!req.user) {
+          return res.status(401).json({ error: "Not authenticated" });
+        }
+
+        const { projectId, imageIndex } = req.params;
+        const userId = (req.user as any).id;
+
+        // Verify ownership
+        const project = await storage.getProject(projectId);
+        if (!project) {
+          return res.status(404).json({ error: "Project not found" });
+        }
+
+        const portfolio = await storage.getPortfolio(userId);
+        if (!portfolio || project.portfolioId !== portfolio.id) {
+          return res.status(403).json({ error: "Access denied" });
+        }
+
+        // Remove image from project
+        const currentImages = project.images || [];
+        const index = parseInt(imageIndex);
+
+        if (index < 0 || index >= currentImages.length) {
+          return res.status(400).json({ error: "Invalid image index" });
+        }
+
+        const imageToDelete = currentImages[index] as {
+          url: string;
+          alt: string;
+          filename?: string;
+        };
+
+        // Delete physical file if it has a filename (uploaded file)
+        if (imageToDelete.filename) {
+          deleteFile(imageToDelete.filename);
+        }
+
+        const newImages = currentImages.filter((_, i) => i !== index);
+
+        const updatedProject = await storage.updateProject(projectId, {
+          images: newImages,
+        });
+
+        res.json({ success: true, project: updatedProject });
+      } catch (error: any) {
+        console.error("Error removing image:", error);
+        res.status(500).json({ error: "Failed to remove image" });
+      }
+    }
+  );
+
+  // Project Management - Update project details
+  app.put("/api/projects/:projectId", async (req, res) => {
+    try {
+      if (!req.user) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+
+      const { projectId } = req.params;
+      const { name, description, detailedDescription, features, technologies } =
+        req.body;
+      const userId = (req.user as any).id;
+
+      // Verify ownership
+      const project = await storage.getProject(projectId);
+      if (!project) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+
+      const portfolio = await storage.getPortfolio(userId);
+      if (!portfolio || project.portfolioId !== portfolio.id) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+
+      // Update project
+      const updateData: any = {};
+      if (name !== undefined) updateData.name = name;
+      if (description !== undefined) updateData.description = description;
+      if (detailedDescription !== undefined)
+        updateData.detailedDescription = detailedDescription;
+      if (features !== undefined) updateData.features = features;
+      if (technologies !== undefined) updateData.technologies = technologies;
+
+      const updatedProject = await storage.updateProject(projectId, updateData);
+
+      res.json({ success: true, project: updatedProject });
+    } catch (error: any) {
+      console.error("Error updating project:", error);
+      res.status(500).json({ error: "Failed to update project" });
+    }
+  });
+
+  // Portfolio Management - Update project selection
+  app.post("/api/portfolio/projects/selection", async (req, res) => {
+    try {
+      if (!req.user) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+
+      const userId = (req.user as any).id;
+      const { projectId, selected } = req.body;
+
+      // Get user's portfolio to verify ownership
+      const portfolio = await storage.getPortfolio(userId);
+      if (!portfolio) {
+        return res.status(404).json({ error: "Portfolio not found" });
+      }
+
+      // Update the project's selected status
+      const updatedProject = await storage.updateProject(projectId, {
+        selected: selected,
+      });
+
+      if (!updatedProject) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+
+      res.json({ success: true, project: updatedProject });
+    } catch (error: any) {
+      console.error("Error updating project selection:", error);
+      res.status(500).json({ error: "Failed to update project selection" });
     }
   });
 
@@ -335,6 +777,49 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json({ url: "https://checkout.stripe.com/placeholder" });
   });
 
+  // Migration endpoint to fix analyzed field for existing projects
+  app.post("/api/migrate-analyzed", async (req, res) => {
+    try {
+      if (!req.user) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+
+      const userId = (req.user as any).id;
+      const portfolio = await storage.getPortfolio(userId);
+
+      if (!portfolio) {
+        return res.status(404).json({ error: "Portfolio not found" });
+      }
+
+      const projects = await storage.getProjects(portfolio.id);
+      let updated = 0;
+
+      for (const project of projects) {
+        const hasAiContent = !!(
+          project.detailedDescription ||
+          (project.features && project.features.length > 0)
+        );
+
+        if (hasAiContent && !project.analyzed) {
+          await storage.updateProject(project.id, {
+            analyzed: true,
+            lastAnalyzed: project.lastAnalyzed || new Date(),
+          });
+          updated++;
+        }
+      }
+
+      res.json({
+        success: true,
+        message: `Updated ${updated} projects with analyzed field`,
+        updatedCount: updated,
+      });
+    } catch (error: any) {
+      console.error("Error migrating analyzed field:", error);
+      res.status(500).json({ error: "Failed to migrate analyzed field" });
+    }
+  });
+
   // Stripe Billing - Webhook
   app.post("/api/billing/webhook", async (req, res) => {
     // TODO: Implement Stripe webhook handling
@@ -346,6 +831,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     // TODO: Verify signature and process webhook
     res.json({ received: true });
   });
+
+  // Serve uploaded files
+  app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
 
   const httpServer = createServer(app);
 

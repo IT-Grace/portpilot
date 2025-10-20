@@ -1,20 +1,41 @@
-import type { PortfolioModel } from "@shared/schema";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
-  Github,
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import HoverImageSlider from "@/components/ui/HoverImageSlider";
+import ProjectGallery from "@/components/ui/ProjectGallery";
+import type { PortfolioModel } from "@shared/schema";
+import {
   ExternalLink,
-  Star,
   GitFork,
-  MapPin,
+  Github,
   Link as LinkIcon,
+  MapPin,
+  Star,
 } from "lucide-react";
-import { SiX, SiLinkedin } from "react-icons/si";
+import { useState } from "react";
+import { SiLinkedin, SiX } from "react-icons/si";
 
 export function MagazineTheme({ data }: { data: PortfolioModel }) {
+  const [selectedProject, setSelectedProject] = useState<any>(null);
   const featuredProject = data.projects[0];
+
+  const formatDescription = (description: string) => {
+    if (!description) return null;
+
+    return description.split("\n").map((line, index) => {
+      if (line.trim() === "") {
+        return <br key={index} />;
+      }
+      return <p key={index}>{line}</p>;
+    });
+  };
 
   return (
     <div className="min-h-screen bg-background">
@@ -23,14 +44,21 @@ export function MagazineTheme({ data }: { data: PortfolioModel }) {
         <div className="max-w-5xl mx-auto px-6 h-20 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <Avatar className="h-12 w-12 border-2 border-background shadow">
-              <AvatarImage src={data.user.avatarUrl || undefined} alt={data.user.name || "User"} />
+              <AvatarImage
+                src={data.user.avatarUrl || undefined}
+                alt={data.user.name || "User"}
+              />
               <AvatarFallback className="bg-primary/10 text-primary font-semibold">
                 {data.user.name?.[0] || data.user.handle?.[0] || "U"}
               </AvatarFallback>
             </Avatar>
             <div>
-              <div className="font-serif font-bold text-xl">{data.user.name}</div>
-              <div className="text-xs text-muted-foreground">Developer Portfolio</div>
+              <div className="font-serif font-bold text-xl">
+                {data.user.name}
+              </div>
+              <div className="text-xs text-muted-foreground">
+                Developer Portfolio
+              </div>
             </div>
           </div>
 
@@ -82,6 +110,12 @@ export function MagazineTheme({ data }: { data: PortfolioModel }) {
                 className="w-full h-full object-cover"
               />
               <div className="absolute inset-0 bg-gradient-to-t from-background via-background/60 to-transparent" />
+              {/* Image count indicator for featured */}
+              {featuredProject.images.length > 1 && (
+                <div className="absolute top-6 right-6 bg-black/70 backdrop-blur-sm text-white text-sm px-3 py-2 rounded-full">
+                  {featuredProject.images.length} screenshots
+                </div>
+              )}
             </div>
           )}
 
@@ -91,7 +125,11 @@ export function MagazineTheme({ data }: { data: PortfolioModel }) {
               <div className="space-y-6">
                 <div className="flex flex-wrap gap-2">
                   {featuredProject.topics.slice(0, 3).map((topic) => (
-                    <Badge key={topic} variant="secondary" className="backdrop-blur-sm">
+                    <Badge
+                      key={topic}
+                      variant="secondary"
+                      className="backdrop-blur-sm"
+                    >
                       {topic}
                     </Badge>
                   ))}
@@ -106,7 +144,9 @@ export function MagazineTheme({ data }: { data: PortfolioModel }) {
                   <Button
                     size="lg"
                     className="gap-2"
-                    onClick={() => window.open(featuredProject.repoUrl, "_blank")}
+                    onClick={() =>
+                      window.open(featuredProject.repoUrl, "_blank")
+                    }
                     data-testid="hero-view-project"
                   >
                     View Project
@@ -117,7 +157,9 @@ export function MagazineTheme({ data }: { data: PortfolioModel }) {
                       size="lg"
                       variant="outline"
                       className="gap-2 backdrop-blur-sm"
-                      onClick={() => window.open(featuredProject.homepage!, "_blank")}
+                      onClick={() =>
+                        window.open(featuredProject.homepage!, "_blank")
+                      }
                       data-testid="hero-live-demo"
                     >
                       Live Demo
@@ -181,9 +223,14 @@ export function MagazineTheme({ data }: { data: PortfolioModel }) {
                 </div>
                 <div>
                   <div className="text-5xl font-serif font-bold mb-2">
-                    {Object.keys(
-                      data.projects.reduce((acc, p) => ({ ...acc, ...p.languages }), {})
-                    ).length}
+                    {
+                      Object.keys(
+                        data.projects.reduce(
+                          (acc, p) => ({ ...acc, ...p.languages }),
+                          {}
+                        )
+                      ).length
+                    }
                   </div>
                   <div className="text-muted-foreground">Languages</div>
                 </div>
@@ -217,14 +264,14 @@ export function MagazineTheme({ data }: { data: PortfolioModel }) {
               >
                 {/* Image */}
                 <div className={`${!isEven ? "md:order-2" : ""}`}>
-                  {project.images[0] ? (
-                    <div className="aspect-[21/9] overflow-hidden rounded-lg">
-                      <img
-                        src={project.images[0].url}
-                        alt={project.images[0].alt}
-                        className="w-full h-full object-cover hover:scale-105 transition-transform duration-500"
-                      />
-                    </div>
+                  {project.images && project.images.length > 0 ? (
+                    <HoverImageSlider
+                      images={project.images}
+                      intervalMs={3000}
+                      aspectRatio="aspect-[21/9]"
+                      className="rounded-lg"
+                      onClick={() => setSelectedProject(project)}
+                    />
                   ) : (
                     <div className="aspect-[21/9] bg-muted rounded-lg flex items-center justify-center">
                       <Github className="h-16 w-16 text-muted-foreground" />
@@ -290,17 +337,15 @@ export function MagazineTheme({ data }: { data: PortfolioModel }) {
                       <Github className="h-4 w-4" />
                       View Code
                     </Button>
-                    {project.homepage && (
-                      <Button
-                        variant="outline"
-                        className="gap-2"
-                        onClick={() => window.open(project.homepage!, "_blank")}
-                        data-testid={`button-demo-${index}`}
-                      >
-                        <ExternalLink className="h-4 w-4" />
-                        Live Demo
-                      </Button>
-                    )}
+                    <Button
+                      variant="outline"
+                      className="gap-2"
+                      data-testid={`button-details-${index}`}
+                      onClick={() => setSelectedProject(project)}
+                    >
+                      <ExternalLink className="h-4 w-4" />
+                      Details
+                    </Button>
                   </div>
                 </div>
               </article>
@@ -315,7 +360,8 @@ export function MagazineTheme({ data }: { data: PortfolioModel }) {
           <div className="text-center space-y-6">
             <h3 className="font-serif font-bold text-3xl">Let's Connect</h3>
             <p className="text-muted-foreground max-w-lg mx-auto">
-              Interested in collaboration or have a project in mind? Let's build something amazing together.
+              Interested in collaboration or have a project in mind? Let's build
+              something amazing together.
             </p>
             <div className="flex items-center justify-center gap-4">
               {data.social.github && (
@@ -342,11 +388,121 @@ export function MagazineTheme({ data }: { data: PortfolioModel }) {
               )}
             </div>
             <div className="pt-8 text-sm text-muted-foreground">
-              © {new Date().getFullYear()} {data.user.name}. Powered by PortPilot.
+              © {new Date().getFullYear()} {data.user.name}. Powered by
+              PortPilot.
             </div>
           </div>
         </div>
       </footer>
+
+      {/* Project Detail Modal */}
+      <Dialog
+        open={!!selectedProject}
+        onOpenChange={(open) => !open && setSelectedProject(null)}
+      >
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          {selectedProject && (
+            <>
+              <DialogHeader>
+                <DialogTitle className="text-2xl font-bold mb-2">
+                  {selectedProject.name}
+                </DialogTitle>
+                <div className="flex flex-wrap gap-2 mb-4">
+                  {selectedProject.topics?.map((topic: string) => (
+                    <Badge key={topic} variant="secondary" className="text-xs">
+                      {topic}
+                    </Badge>
+                  ))}
+                </div>
+              </DialogHeader>
+
+              <div className="space-y-6">
+                {selectedProject.description && (
+                  <div>
+                    <h3 className="text-lg font-semibold mb-2">Description</h3>
+                    <div className="prose prose-sm max-w-none">
+                      {formatDescription(selectedProject.description)}
+                    </div>
+                  </div>
+                )}
+
+                {selectedProject.features &&
+                  selectedProject.features.length > 0 && (
+                    <div>
+                      <h3 className="text-lg font-semibold mb-2">
+                        Key Features
+                      </h3>
+                      <ul className="list-disc list-inside space-y-1">
+                        {selectedProject.features.map(
+                          (feature: string, index: number) => (
+                            <li key={index} className="text-sm">
+                              {feature}
+                            </li>
+                          )
+                        )}
+                      </ul>
+                    </div>
+                  )}
+
+                {selectedProject.technologies &&
+                  selectedProject.technologies.length > 0 && (
+                    <div>
+                      <h3 className="text-lg font-semibold mb-2">
+                        Technologies
+                      </h3>
+                      <div className="flex flex-wrap gap-2">
+                        {selectedProject.technologies.map((tech: string) => (
+                          <Badge
+                            key={tech}
+                            variant="outline"
+                            className="text-xs"
+                          >
+                            {tech}
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                {selectedProject.images &&
+                  selectedProject.images.length > 0 && (
+                    <div>
+                      <h3 className="text-lg font-semibold mb-2">Gallery</h3>
+                      <ProjectGallery images={selectedProject.images} />
+                    </div>
+                  )}
+
+                <div className="flex gap-4 pt-4">
+                  {selectedProject.repoUrl && (
+                    <Button asChild variant="outline">
+                      <a
+                        href={selectedProject.repoUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        <Github className="w-4 h-4 mr-2" />
+                        View Source
+                      </a>
+                    </Button>
+                  )}
+                  {selectedProject.liveUrl && (
+                    <Button asChild>
+                      <a
+                        href={selectedProject.liveUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        <ExternalLink className="w-4 h-4 mr-2" />
+                        Live Demo
+                      </a>
+                    </Button>
+                  )}
+                </div>
+              </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

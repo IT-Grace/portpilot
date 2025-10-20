@@ -1,20 +1,40 @@
-import type { PortfolioModel } from "@shared/schema";
+import { ThemeToggle } from "@/components/ThemeToggle";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { ThemeToggle } from "@/components/ThemeToggle";
 import {
-  Github,
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import HoverImageSlider from "@/components/ui/HoverImageSlider";
+import ProjectGallery from "@/components/ui/ProjectGallery";
+import type { PortfolioModel } from "@shared/schema";
+import {
   ExternalLink,
-  Star,
   GitFork,
-  MapPin,
+  Github,
   Link as LinkIcon,
+  MapPin,
+  Star,
 } from "lucide-react";
-import { SiX, SiLinkedin } from "react-icons/si";
+import { useState } from "react";
+import { SiLinkedin, SiX } from "react-icons/si";
 
 export function CardGridTheme({ data }: { data: PortfolioModel }) {
+  const [selectedProject, setSelectedProject] = useState<any>(null);
+
+  const formatDescription = (text?: string) => {
+    if (!text) return null;
+    return text.split("\n").map((paragraph, index) => (
+      <p key={index} className="mb-4 last:mb-0 leading-relaxed">
+        {paragraph}
+      </p>
+    ));
+  };
+
   return (
     <div className="min-h-screen bg-background">
       {/* Compact Header */}
@@ -23,7 +43,10 @@ export function CardGridTheme({ data }: { data: PortfolioModel }) {
           <div className="flex items-center justify-between gap-6">
             <div className="flex items-center gap-4">
               <Avatar className="h-16 w-16 border-2 border-background shadow-lg">
-                <AvatarImage src={data.user.avatarUrl || undefined} alt={data.user.name || "User"} />
+                <AvatarImage
+                  src={data.user.avatarUrl || undefined}
+                  alt={data.user.name || "User"}
+                />
                 <AvatarFallback className="bg-primary/10 text-primary text-2xl font-semibold">
                   {data.user.name?.[0] || data.user.handle?.[0] || "U"}
                 </AvatarFallback>
@@ -102,44 +125,45 @@ export function CardGridTheme({ data }: { data: PortfolioModel }) {
             const languageEntries = Object.entries(project.languages).sort(
               ([, a], [, b]) => b - a
             );
-            const totalBytes = languageEntries.reduce((sum, [, bytes]) => sum + bytes, 0);
+            const totalBytes = languageEntries.reduce(
+              (sum, [, bytes]) => sum + bytes,
+              0
+            );
 
             return (
               <Card
                 key={project.id}
                 className="break-inside-avoid hover-elevate transition-all group overflow-hidden"
               >
-                {/* Project Image */}
-                {project.images[0] && (
-                  <div className="aspect-video overflow-hidden bg-muted">
-                    <img
-                      src={project.images[0].url}
-                      alt={project.images[0].alt}
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                    />
-                  </div>
+                {/* Project Image Slider */}
+                {project.images && project.images.length > 0 && (
+                  <HoverImageSlider
+                    images={project.images}
+                    intervalMs={2500}
+                    aspectRatio="aspect-video"
+                    onClick={() => setSelectedProject(project)}
+                  />
                 )}
 
                 <CardContent className="p-6 space-y-4">
                   <div>
-                    <h3 className="font-semibold text-xl mb-2">{project.name}</h3>
+                    <h3 className="font-semibold text-xl mb-2">
+                      {project.name}
+                    </h3>
                     <p className="text-muted-foreground text-sm leading-relaxed">
-                      {project.description}
+                      {project.summary || project.description}
                     </p>
                   </div>
 
-                  {/* Summary */}
-                  {project.summary && (
-                    <p className="text-sm leading-relaxed">{project.summary}</p>
-                  )}
-
                   {/* Features */}
-                  {project.features.length > 0 && (
+                  {project.features && project.features.length > 0 && (
                     <ul className="space-y-1.5 text-sm">
                       {project.features.slice(0, 3).map((feature, i) => (
                         <li key={i} className="flex items-start gap-2">
                           <div className="h-1.5 w-1.5 rounded-full bg-primary mt-1.5 shrink-0" />
-                          <span className="text-muted-foreground">{feature}</span>
+                          <span className="text-muted-foreground">
+                            {feature}
+                          </span>
                         </li>
                       ))}
                     </ul>
@@ -148,7 +172,11 @@ export function CardGridTheme({ data }: { data: PortfolioModel }) {
                   {/* Topics */}
                   <div className="flex flex-wrap gap-2">
                     {project.topics.map((topic) => (
-                      <Badge key={topic} variant="secondary" className="text-xs">
+                      <Badge
+                        key={topic}
+                        variant="secondary"
+                        className="text-xs"
+                      >
                         {topic}
                       </Badge>
                     ))}
@@ -198,6 +226,7 @@ export function CardGridTheme({ data }: { data: PortfolioModel }) {
                   )}
 
                   {/* Actions */}
+                  {/* Actions */}
                   <div className="flex gap-2 pt-2">
                     <Button
                       variant="outline"
@@ -208,16 +237,15 @@ export function CardGridTheme({ data }: { data: PortfolioModel }) {
                       <Github className="h-4 w-4" />
                       View Code
                     </Button>
-                    {project.homepage && (
-                      <Button
-                        variant="default"
-                        size="icon"
-                        onClick={() => window.open(project.homepage!, "_blank")}
-                        data-testid={`button-live-${project.id}`}
-                      >
-                        <ExternalLink className="h-4 w-4" />
-                      </Button>
-                    )}
+                    <Button
+                      variant="default"
+                      className="gap-2"
+                      onClick={() => setSelectedProject(project)}
+                      data-testid={`button-details-${project.id}`}
+                    >
+                      <ExternalLink className="h-4 w-4" />
+                      Details
+                    </Button>
                   </div>
                 </CardContent>
               </Card>
@@ -234,6 +262,115 @@ export function CardGridTheme({ data }: { data: PortfolioModel }) {
           </p>
         </div>
       </footer>
+
+      {/* Project Detail Modal */}
+      <Dialog
+        open={!!selectedProject}
+        onOpenChange={(open) => !open && setSelectedProject(null)}
+      >
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          {selectedProject && (
+            <>
+              <DialogHeader>
+                <DialogTitle className="text-2xl font-bold mb-2">
+                  {selectedProject.name}
+                </DialogTitle>
+                <div className="flex flex-wrap gap-2 mb-4">
+                  {selectedProject.topics?.map((topic: string) => (
+                    <Badge key={topic} variant="secondary" className="text-xs">
+                      {topic}
+                    </Badge>
+                  ))}
+                </div>
+              </DialogHeader>
+
+              <div className="space-y-6">
+                {selectedProject.description && (
+                  <div>
+                    <h3 className="text-lg font-semibold mb-2">Description</h3>
+                    <div className="prose prose-sm max-w-none">
+                      {formatDescription(selectedProject.description)}
+                    </div>
+                  </div>
+                )}
+
+                {selectedProject.features &&
+                  selectedProject.features.length > 0 && (
+                    <div>
+                      <h3 className="text-lg font-semibold mb-2">
+                        Key Features
+                      </h3>
+                      <ul className="list-disc list-inside space-y-1">
+                        {selectedProject.features.map(
+                          (feature: string, index: number) => (
+                            <li key={index} className="text-sm">
+                              {feature}
+                            </li>
+                          )
+                        )}
+                      </ul>
+                    </div>
+                  )}
+
+                {selectedProject.technologies &&
+                  selectedProject.technologies.length > 0 && (
+                    <div>
+                      <h3 className="text-lg font-semibold mb-2">
+                        Technologies
+                      </h3>
+                      <div className="flex flex-wrap gap-2">
+                        {selectedProject.technologies.map((tech: string) => (
+                          <Badge
+                            key={tech}
+                            variant="outline"
+                            className="text-xs"
+                          >
+                            {tech}
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                {selectedProject.images &&
+                  selectedProject.images.length > 0 && (
+                    <div>
+                      <h3 className="text-lg font-semibold mb-2">Gallery</h3>
+                      <ProjectGallery images={selectedProject.images} />
+                    </div>
+                  )}
+
+                <div className="flex gap-4 pt-4">
+                  {selectedProject.repoUrl && (
+                    <Button asChild variant="outline">
+                      <a
+                        href={selectedProject.repoUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        <Github className="w-4 h-4 mr-2" />
+                        View Source
+                      </a>
+                    </Button>
+                  )}
+                  {selectedProject.liveUrl && (
+                    <Button asChild>
+                      <a
+                        href={selectedProject.liveUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        <ExternalLink className="w-4 h-4 mr-2" />
+                        Live Demo
+                      </a>
+                    </Button>
+                  )}
+                </div>
+              </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

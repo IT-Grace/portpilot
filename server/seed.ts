@@ -46,7 +46,24 @@ async function seed() {
   console.log("✅ Created portfolio");
 
   // Create sample projects
-  const projectsData = [
+  const projectsData: Array<{
+    portfolioId: string;
+    repoId: string;
+    name: string;
+    repoUrl: string;
+    homepage: string | null;
+    description: string;
+    summary: string;
+    features: string[];
+    images: Array<{ url: string; alt: string }>;
+    topics: string[];
+    languages: Record<string, number>;
+    stars: number;
+    forks: number;
+    lastUpdated: Date;
+    stack: Record<string, any>;
+    order: number;
+  }> = [
     {
       portfolioId: portfolio.id,
       repoId: "demo-repo-1",

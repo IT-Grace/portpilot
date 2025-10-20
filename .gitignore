@@ -41,8 +41,12 @@ Thumbs.db
 coverage
 .nyc_output
 
+# Uploads
+uploads/
+
 # Misc
 vite.config.ts.*
 *.tar.gz
 .replit
 replit.nix
+cookies.txt

@@ -33,6 +33,18 @@ export default function Dashboard() {
 
   useEffect(() => {
     fetchCurrentUser();
+
+    // Check for tab query parameter
+    const urlParams = new URLSearchParams(window.location.search);
+    const tabParam = urlParams.get("tab");
+    if (
+      tabParam &&
+      ["overview", "repos", "appearance", "publishing", "billing"].includes(
+        tabParam
+      )
+    ) {
+      setActiveTab(tabParam);
+    }
   }, []);
 
   const fetchCurrentUser = async () => {
@@ -72,6 +84,14 @@ export default function Dashboard() {
       </div>
     );
   }
+
+  const handleTabChange = (value: string) => {
+    setActiveTab(value);
+    // Update URL without page reload
+    const url = new URL(window.location.href);
+    url.searchParams.set("tab", value);
+    window.history.replaceState({}, "", url);
+  };
 
   const handleSignOut = () => {
     // TODO: Implement sign out
@@ -139,7 +159,7 @@ export default function Dashboard() {
       <div className="max-w-7xl mx-auto px-6 py-8">
         <Tabs
           value={activeTab}
-          onValueChange={setActiveTab}
+          onValueChange={handleTabChange}
           className="space-y-8"
         >
           <TabsList className="grid w-full grid-cols-5 max-w-3xl">

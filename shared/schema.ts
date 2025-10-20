@@ -74,6 +74,7 @@ export const projects = pgTable("projects", {
   homepage: text("homepage"),
   description: text("description"),
   summary: text("summary"),
+  detailedDescription: text("detailed_description"),
   features: json("features")
     .$type<string[]>()
     .default(sql`'[]'`),
@@ -89,6 +90,8 @@ export const projects = pgTable("projects", {
   stars: integer("stars").default(0).notNull(),
   forks: integer("forks").default(0).notNull(),
   lastUpdated: timestamp("last_updated"),
+  lastAnalyzed: timestamp("last_analyzed"),
+  analyzed: boolean("analyzed").default(false).notNull(),
   stack: json("stack").$type<{
     framework?: string;
     runtime?: string;
@@ -96,6 +99,7 @@ export const projects = pgTable("projects", {
     docker?: boolean;
   }>(),
   order: integer("order").default(0).notNull(),
+  selected: boolean("selected").default(true).notNull(),
 });
 
 export const integrations = pgTable("integrations", {
@@ -287,7 +291,7 @@ export type PortfolioModel = {
     description: string | null;
     summary: string | null;
     features: string[];
-    images: Array<{ url: string; alt: string }>;
+    images: Array<{ url: string; alt: string; filename?: string }>;
     languages: Record<string, number>;
     topics: string[];
     stars: number;

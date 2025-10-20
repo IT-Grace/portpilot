@@ -18,7 +18,9 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { formatDistanceToNow } from "date-fns";
 import {
+  Brain,
   Clock,
+  Edit,
   Filter,
   GitFork,
   Github,
@@ -27,6 +29,7 @@ import {
   Star,
 } from "lucide-react";
 import { useEffect, useState } from "react";
+import ProjectEditModal from "./ProjectEditModal";
 
 type Repo = {
   id: string;
@@ -36,10 +39,17 @@ type Repo = {
   stars: number;
   forks: number;
   lastUpdated: Date;
+  lastAnalyzed?: Date | null;
   repoUrl?: string;
   homepage?: string;
   topics?: string[];
   selected?: boolean;
+  analyzing?: boolean;
+  analyzed?: boolean;
+  detailedDescription?: string;
+  features?: string[];
+  technologies?: string[];
+  images?: Array<{ url: string; alt: string; filename?: string }>;
 };
 
 export function ReposTab() {
@@ -47,12 +57,59 @@ export function ReposTab() {
   const [sortBy, setSortBy] = useState("updated");
   const [languageFilter, setLanguageFilter] = useState("all");
   const [syncing, setSyncing] = useState(false);
+  const [editingProject, setEditingProject] = useState<Repo | null>(null);
   const [repos, setRepos] = useState<Repo[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     fetchDashboardData();
   }, []);
+
+  const mergeRepoData = (newProjects: any[], preserveStates = false) => {
+    if (!preserveStates) {
+      // Initial load - use default states
+      return newProjects.map((project: any) => ({
+        ...project,
+        selected: project.selected !== false,
+        analyzing: false,
+        analyzed: project.analyzed || false,
+        lastUpdated: project.lastUpdated
+          ? new Date(project.lastUpdated)
+          : new Date(),
+        lastAnalyzed: project.lastAnalyzed
+          ? new Date(project.lastAnalyzed)
+          : null,
+      }));
+    }
+
+    // Preserve existing states for sync operations
+    const currentRepoStates = new Map();
+    repos.forEach((repo) => {
+      currentRepoStates.set(repo.id, {
+        selected: repo.selected,
+        analyzing: repo.analyzing,
+        analyzed: repo.analyzed,
+      });
+    });
+
+    return newProjects.map((project: any) => {
+      const currentState = currentRepoStates.get(project.id);
+      return {
+        ...project,
+        selected: currentState
+          ? currentState.selected
+          : project.selected !== false,
+        analyzing: currentState ? currentState.analyzing : false,
+        analyzed: project.analyzed || false,
+        lastUpdated: project.lastUpdated
+          ? new Date(project.lastUpdated)
+          : new Date(),
+        lastAnalyzed: project.lastAnalyzed
+          ? new Date(project.lastAnalyzed)
+          : null,
+      };
+    });
+  };
 
   const fetchDashboardData = async () => {
     try {
@@ -62,15 +119,8 @@ export function ReposTab() {
 
       if (response.ok) {
         const data = await response.json();
-        setRepos(
-          data.projects.map((project: any) => ({
-            ...project,
-            selected: true, // Default to selected for existing projects
-            lastUpdated: project.lastUpdated 
-              ? new Date(project.lastUpdated) 
-              : new Date(), // Fallback to current date if null/undefined
-          }))
-        );
+        const mergedRepos = mergeRepoData(data.projects, false);
+        setRepos(mergedRepos);
       } else {
         console.error("Failed to fetch dashboard data");
       }
@@ -84,6 +134,35 @@ export function ReposTab() {
   const lastSync = new Date(Date.now() - 1000 * 60 * 60 * 2);
   const selectedCount = repos.filter((r) => r.selected).length;
   const maxProjects = 6; // TODO: Get from user plan
+
+  // Helper function to check if a project needs re-analysis
+  const needsReAnalysis = (repo: Repo) => {
+    if (!repo.analyzed || !repo.lastAnalyzed) {
+      console.log(
+        `${repo.name}: No re-analysis needed - analyzed: ${repo.analyzed}, lastAnalyzed: ${repo.lastAnalyzed}`
+      );
+      return false;
+    }
+
+    const lastAnalyzed =
+      repo.lastAnalyzed instanceof Date
+        ? repo.lastAnalyzed
+        : new Date(repo.lastAnalyzed);
+    const lastUpdated =
+      repo.lastUpdated instanceof Date
+        ? repo.lastUpdated
+        : new Date(repo.lastUpdated);
+
+    const needsReanalysis = lastUpdated > lastAnalyzed;
+    console.log(
+      `${
+        repo.name
+      }: lastUpdated: ${lastUpdated.toISOString()}, lastAnalyzed: ${lastAnalyzed.toISOString()}, needs reanalysis: ${needsReanalysis}`
+    );
+
+    // Needs re-analysis if repo was updated after it was analyzed
+    return needsReanalysis;
+  };
 
   const handleSync = async () => {
     setSyncing(true);
@@ -99,22 +178,152 @@ export function ReposTab() {
       if (response.ok) {
         const result = await response.json();
         console.log("Sync completed:", result);
-        // Refresh the dashboard data after sync
-        await fetchDashboardData();
+
+        // Show sync results to user
+        const { syncedCount = 0, updatedCount = 0, removedCount = 0 } = result;
+        if (syncedCount > 0 || updatedCount > 0 || removedCount > 0) {
+          const parts = [];
+          if (syncedCount > 0)
+            parts.push(`Added ${syncedCount} new repositories`);
+          if (updatedCount > 0)
+            parts.push(`Updated ${updatedCount} repositories`);
+          if (removedCount > 0)
+            parts.push(`Removed ${removedCount} repositories`);
+
+          const message = parts.join(", ") + ".";
+          if (updatedCount > 0) {
+            alert(
+              `Sync completed! ${message}\n\nNote: Updated repositories may need re-analysis to refresh AI-generated content.`
+            );
+          } else {
+            alert(`Sync completed! ${message}`);
+          }
+        } else {
+          alert("Sync completed! All repositories are up to date.");
+        }
+
+        // Fetch updated data and merge with existing state
+        const dashboardResponse = await fetch("/api/dashboard", {
+          credentials: "include",
+        });
+
+        if (dashboardResponse.ok) {
+          const data = await dashboardResponse.json();
+          console.log("Dashboard data after sync:", data.projects);
+          const mergedRepos = mergeRepoData(data.projects, true);
+          console.log("Merged repos:", mergedRepos);
+          setRepos(mergedRepos);
+        }
       } else {
         console.error("Sync failed:", response.statusText);
+        alert("Sync failed. Please try again.");
       }
     } catch (error) {
       console.error("Error syncing repositories:", error);
+      alert(
+        "Error syncing repositories. Please check your connection and try again."
+      );
     } finally {
       setSyncing(false);
     }
   };
 
-  const toggleRepo = (id: string) => {
+  const toggleRepo = async (id: string) => {
+    const repo = repos.find((r) => r.id === id);
+    const newSelected = !repo?.selected;
+
+    // Update local state immediately
     setRepos((prev) =>
-      prev.map((r) => (r.id === id ? { ...r, selected: !r.selected } : r))
+      prev.map((r) => (r.id === id ? { ...r, selected: newSelected } : r))
     );
+
+    // Update selection on server
+    try {
+      await fetch("/api/portfolio/projects/selection", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        credentials: "include",
+        body: JSON.stringify({
+          projectId: id,
+          selected: newSelected,
+        }),
+      });
+    } catch (error) {
+      console.error("Error updating project selection:", error);
+      // Revert on error
+      setRepos((prev) =>
+        prev.map((r) => (r.id === id ? { ...r, selected: !newSelected } : r))
+      );
+    }
+  };
+
+  const analyzeProject = async (projectId: string) => {
+    // Set loading state for this specific project
+    setRepos((prev) =>
+      prev.map((r) => (r.id === projectId ? { ...r, analyzing: true } : r))
+    );
+
+    try {
+      const response = await fetch(`/api/projects/${projectId}/analyze`, {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        console.log("Project analysis completed:", result);
+
+        // Update the project in local state with analysis results
+        const updatedRepo = {
+          ...repos.find((r) => r.id === projectId)!,
+          ...result.project,
+          analyzing: false,
+          analyzed: true,
+          // Ensure date fields are always Date objects
+          lastUpdated: result.project.lastUpdated
+            ? new Date(result.project.lastUpdated)
+            : repos.find((r) => r.id === projectId)?.lastUpdated || new Date(),
+          lastAnalyzed: result.project.lastAnalyzed
+            ? new Date(result.project.lastAnalyzed)
+            : new Date(),
+        };
+
+        setRepos((prev) =>
+          prev.map((r) => (r.id === projectId ? updatedRepo : r))
+        );
+
+        // Automatically open edit modal after successful analysis
+        setEditingProject(updatedRepo);
+      } else {
+        const errorData = await response
+          .json()
+          .catch(() => ({ error: response.statusText }));
+        console.error("Analysis failed:", errorData);
+        alert(`Analysis failed: ${errorData.error || response.statusText}`);
+
+        // Remove loading state
+        setRepos((prev) =>
+          prev.map((r) => (r.id === projectId ? { ...r, analyzing: false } : r))
+        );
+      }
+    } catch (error) {
+      console.error("Error analyzing project:", error);
+      alert(
+        `Error analyzing project: ${
+          error instanceof Error ? error.message : "Unknown error"
+        }`
+      );
+
+      // Remove loading state
+      setRepos((prev) =>
+        prev.map((r) => (r.id === projectId ? { ...r, analyzing: false } : r))
+      );
+    }
   };
 
   const languages = Array.from(
@@ -130,8 +339,19 @@ export function ReposTab() {
     .filter((r) => languageFilter === "all" || r.language === languageFilter)
     .sort((a, b) => {
       if (sortBy === "stars") return b.stars - a.stars;
-      if (sortBy === "updated")
-        return b.lastUpdated.getTime() - a.lastUpdated.getTime();
+      if (sortBy === "updated") {
+        const aTime = a.lastUpdated
+          ? a.lastUpdated instanceof Date
+            ? a.lastUpdated.getTime()
+            : new Date(a.lastUpdated).getTime()
+          : 0;
+        const bTime = b.lastUpdated
+          ? b.lastUpdated instanceof Date
+            ? b.lastUpdated.getTime()
+            : new Date(b.lastUpdated).getTime()
+          : 0;
+        return bTime - aTime;
+      }
       return a.name.localeCompare(b.name);
     });
 
@@ -169,7 +389,8 @@ export function ReposTab() {
           <div>
             <CardTitle>GitHub Sync</CardTitle>
             <CardDescription>
-              Last synced {lastSync && !isNaN(lastSync.getTime())
+              Last synced{" "}
+              {lastSync && !isNaN(lastSync.getTime())
                 ? formatDistanceToNow(lastSync, { addSuffix: true })
                 : "recently"}
             </CardDescription>
@@ -268,11 +489,63 @@ export function ReposTab() {
                         </p>
                       )}
                     </div>
-                    <Switch
-                      checked={repo.selected}
-                      onCheckedChange={() => toggleRepo(repo.id)}
-                      data-testid={`switch-repo-${repo.id}`}
-                    />
+                    <div className="flex flex-col items-end gap-2">
+                      {needsReAnalysis(repo) && (
+                        <div className="text-xs text-amber-600 bg-amber-50 px-2 py-1 rounded border border-amber-200">
+                          ⚠️ Updated - Consider re-analysis
+                        </div>
+                      )}
+                      <div className="flex items-center gap-3">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => analyzeProject(repo.id)}
+                          className="gap-2"
+                          data-testid={`button-analyze-${repo.id}`}
+                          disabled={
+                            repo.analyzing ||
+                            (repo.analyzed && !needsReAnalysis(repo))
+                          }
+                        >
+                          {repo.analyzing ? (
+                            <>
+                              <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                              Analyzing...
+                            </>
+                          ) : needsReAnalysis(repo) ? (
+                            <>
+                              <Brain className="h-4 w-4" />
+                              Re-analyze
+                            </>
+                          ) : repo.analyzed ? (
+                            <>
+                              <Brain className="h-4 w-4" />
+                              Analyzed
+                            </>
+                          ) : (
+                            <>
+                              <Brain className="h-4 w-4" />
+                              Analyze
+                            </>
+                          )}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setEditingProject(repo)}
+                          className="gap-2"
+                          disabled={!repo.selected}
+                        >
+                          <Edit className="h-4 w-4" />
+                          Edit
+                        </Button>
+                      </div>
+                      <Switch
+                        checked={repo.selected}
+                        onCheckedChange={() => toggleRepo(repo.id)}
+                        data-testid={`switch-repo-${repo.id}`}
+                      />
+                    </div>
                   </div>
 
                   <div className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
@@ -299,7 +572,9 @@ export function ReposTab() {
                       <Clock className="h-4 w-4" />
                       <span>
                         Updated{" "}
-                        {repo.lastUpdated && !isNaN(repo.lastUpdated.getTime())
+                        {repo.lastUpdated &&
+                        repo.lastUpdated instanceof Date &&
+                        !isNaN(repo.lastUpdated.getTime())
                           ? formatDistanceToNow(repo.lastUpdated, {
                               addSuffix: true,
                             })
@@ -329,6 +604,23 @@ export function ReposTab() {
           </Card>
         )}
       </div>
+
+      {/* Project Edit Modal */}
+      <ProjectEditModal
+        project={editingProject}
+        isOpen={!!editingProject}
+        onClose={() => setEditingProject(null)}
+        onUpdate={(updatedProject) => {
+          setRepos((prev) =>
+            prev.map((repo) =>
+              repo.id === updatedProject.id
+                ? { ...repo, ...updatedProject }
+                : repo
+            )
+          );
+          setEditingProject(null);
+        }}
+      />
     </div>
   );
 }

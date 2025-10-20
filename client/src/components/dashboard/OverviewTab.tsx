@@ -189,7 +189,7 @@ export function OverviewTab() {
               Customize Theme
             </Button>
           </Link>
-          <Link href="/u/demo">
+          <Link href={`/u/${dashboardData.user.handle}`}>
             <Button
               variant="outline"
               className="w-full gap-2 justify-start"
