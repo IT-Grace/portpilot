@@ -5,6 +5,7 @@ import { OverviewTab } from "@/components/dashboard/OverviewTab";
 import { PublishingTab } from "@/components/dashboard/PublishingTab";
 import { ReposTab } from "@/components/dashboard/ReposTab";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -93,9 +94,26 @@ export default function Dashboard() {
     window.history.replaceState({}, "", url);
   };
 
-  const handleSignOut = () => {
-    // TODO: Implement sign out
-    window.location.href = "/api/auth/signout";
+  const handleSignOut = async () => {
+    try {
+      // In development, try dev logout first, fallback to regular logout
+      if (import.meta.env.DEV) {
+        const devResponse = await fetch("/api/dev/logout", {
+          method: "POST",
+          credentials: "include",
+        });
+        if (devResponse.ok) {
+          window.location.href = "/";
+          return;
+        }
+      }
+
+      // Regular logout for production or if dev logout fails
+      window.location.href = "/api/auth/signout";
+    } catch (error) {
+      console.error("Logout error:", error);
+      window.location.href = "/api/auth/signout";
+    }
   };
 
   return (
@@ -126,9 +144,17 @@ export default function Dashboard() {
                       {user.name?.[0] || user.handle?.[0] || "U"}
                     </AvatarFallback>
                   </Avatar>
-                  <span className="hidden md:inline-block">
-                    {user.name || user.handle}
-                  </span>
+                  <div className="hidden md:flex md:items-center md:gap-2">
+                    <span>{user.name || user.handle}</span>
+                    {import.meta.env.DEV && user.plan && (
+                      <Badge
+                        variant={user.plan === "PRO" ? "default" : "secondary"}
+                        className="text-xs"
+                      >
+                        {user.plan}
+                      </Badge>
+                    )}
+                  </div>
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-56">
@@ -197,7 +223,7 @@ export default function Dashboard() {
           </TabsContent>
 
           <TabsContent value="publishing" className="space-y-6">
-            <PublishingTab />
+            <PublishingTab user={user} />
           </TabsContent>
         </Tabs>
       </div>

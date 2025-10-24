@@ -1,31 +1,76 @@
-import { useState } from "react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { Badge } from "@/components/ui/badge";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import {
-  Globe,
-  ExternalLink,
-  Copy,
-  Check,
-  Crown,
-  AlertCircle,
-  CheckCircle,
-} from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import {
+  AlertCircle,
+  Check,
+  CheckCircle,
+  Copy,
+  Crown,
+  ExternalLink,
+  Globe,
+} from "lucide-react";
+import { useEffect, useState } from "react";
 
-export function PublishingTab() {
+interface CurrentUser {
+  id: string;
+  name: string | null;
+  handle: string;
+  email: string | null;
+  avatarUrl: string | null;
+  plan: string;
+}
+
+interface PublishingTabProps {
+  user: CurrentUser | null;
+}
+
+export function PublishingTab({ user }: PublishingTabProps) {
   const [isPublic, setIsPublic] = useState(true);
   const [customDomain, setCustomDomain] = useState("");
   const [copied, setCopied] = useState(false);
+  const [loading, setLoading] = useState(false);
   const { toast } = useToast();
 
-  const userHandle = "demo"; // TODO: Get from context
-  const userPlan = "FREE"; // TODO: Get from context
-  const portfolioUrl = `${window.location.origin}/u/${userHandle}`;
+  const userHandle = user?.handle || "demo";
+  const userPlan = (user?.plan as "FREE" | "PRO") || "FREE";
+  const portfolioUrl = user?.handle
+    ? `${window.location.origin}/u/${user.handle}`
+    : `${window.location.origin}/u/demo`;
+
+  // Fetch user's portfolio data on mount
+  useEffect(() => {
+    const fetchPortfolioData = async () => {
+      if (!user) return;
+
+      try {
+        setLoading(true);
+        const response = await fetch("/api/portfolio");
+        if (response.ok) {
+          const portfolioData = await response.json();
+          setIsPublic(portfolioData.isPublic ?? true);
+          setCustomDomain(portfolioData.customDomain || "");
+        }
+      } catch (error) {
+        console.error("Error fetching portfolio data:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchPortfolioData();
+  }, [user]);
 
   const handleCopyUrl = () => {
     navigator.clipboard.writeText(portfolioUrl);
@@ -37,17 +82,77 @@ export function PublishingTab() {
     });
   };
 
-  const handleTogglePublic = (checked: boolean) => {
-    setIsPublic(checked);
-    // TODO: Call API to update portfolio visibility
+  const handleTogglePublic = async (checked: boolean) => {
+    try {
+      const response = await fetch("/api/portfolio/settings", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ isPublic: checked }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to update portfolio visibility");
+      }
+
+      setIsPublic(checked);
+      toast({
+        title: checked ? "Portfolio published" : "Portfolio unpublished",
+        description: checked
+          ? "Your portfolio is now visible to the public"
+          : "Your portfolio is now private",
+      });
+    } catch (error) {
+      console.error("Error updating portfolio visibility:", error);
+      toast({
+        title: "Error",
+        description: "Failed to update portfolio visibility",
+        variant: "destructive",
+      });
+    }
   };
 
-  const handleSaveCustomDomain = () => {
-    // TODO: Call API to save custom domain
-    toast({
-      title: "Custom domain saved",
-      description: "Follow the DNS configuration steps below",
-    });
+  const handleSaveCustomDomain = async () => {
+    if (!customDomain.trim()) {
+      toast({
+        title: "Error",
+        description: "Please enter a domain name",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      setLoading(true);
+      const response = await fetch("/api/portfolio/custom-domain", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ customDomain: customDomain.trim() }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to save custom domain");
+      }
+
+      toast({
+        title: "Custom domain saved",
+        description:
+          "Follow the DNS configuration steps below to activate your domain",
+      });
+    } catch (error: any) {
+      console.error("Error saving custom domain:", error);
+      toast({
+        title: "Error",
+        description: error.message || "Failed to save custom domain",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -75,10 +180,9 @@ export function PublishingTab() {
                 Public Portfolio
               </Label>
               <p className="text-sm text-muted-foreground">
-                {isPublic 
+                {isPublic
                   ? "Your portfolio is live and accessible to anyone"
-                  : "Your portfolio is private and only visible to you"
-                }
+                  : "Your portfolio is private and only visible to you"}
               </p>
             </div>
             <Switch
@@ -149,8 +253,8 @@ export function PublishingTab() {
             <div className="flex items-start gap-2 text-sm text-muted-foreground">
               <Globe className="h-4 w-4 mt-0.5 text-chart-2" />
               <span>
-                Anyone with this link can view your portfolio. Share it on social media,
-                in your resume, or with potential employers.
+                Anyone with this link can view your portfolio. Share it on
+                social media, in your resume, or with potential employers.
               </span>
             </div>
           )}
@@ -191,10 +295,10 @@ export function PublishingTab() {
                   />
                   <Button
                     onClick={handleSaveCustomDomain}
-                    disabled={!customDomain}
+                    disabled={!customDomain || loading}
                     data-testid="button-save-domain"
                   >
-                    Save
+                    {loading ? "Saving..." : "Save"}
                   </Button>
                 </div>
               </div>
@@ -225,8 +329,8 @@ export function PublishingTab() {
                     <Alert>
                       <AlertCircle className="h-4 w-4" />
                       <AlertDescription className="text-sm">
-                        DNS changes can take up to 48 hours to propagate. We'll notify you once
-                        your custom domain is active.
+                        DNS changes can take up to 48 hours to propagate. We'll
+                        notify you once your custom domain is active.
                       </AlertDescription>
                     </Alert>
                   </div>

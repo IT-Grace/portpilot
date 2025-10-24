@@ -771,11 +771,227 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Portfolio Management - Update portfolio settings (visibility, etc.)
+  app.post("/api/portfolio/settings", async (req, res) => {
+    try {
+      if (!req.user) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+
+      const { isPublic } = req.body;
+      const userId = (req.user as any).id;
+
+      // Get user's portfolio
+      const portfolio = await storage.getPortfolio(userId);
+      if (!portfolio) {
+        return res.status(404).json({ error: "Portfolio not found" });
+      }
+
+      // Update portfolio visibility
+      const updated = await storage.updatePortfolioVisibility(
+        portfolio.id,
+        isPublic
+      );
+
+      res.json({ success: true, portfolio: updated });
+    } catch (error: any) {
+      console.error("Error updating portfolio settings:", error);
+      res.status(500).json({ error: "Failed to update portfolio settings" });
+    }
+  });
+
+  // Portfolio Management - Update custom domain (Pro only)
+  app.post("/api/portfolio/custom-domain", async (req, res) => {
+    try {
+      if (!req.user) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+
+      const { customDomain } = req.body;
+      const userId = (req.user as any).id;
+
+      // Get user to check if they have Pro plan
+      const user = await storage.getUser(userId);
+      if (!user) {
+        return res.status(404).json({ error: "User not found" });
+      }
+
+      if (user.plan !== "PRO") {
+        return res
+          .status(403)
+          .json({ error: "Custom domains are only available for Pro users" });
+      }
+
+      // Get user's portfolio
+      const portfolio = await storage.getPortfolio(userId);
+      if (!portfolio) {
+        return res.status(404).json({ error: "Portfolio not found" });
+      }
+
+      // Update custom domain
+      const updated = await storage.updatePortfolio(portfolio.id, {
+        customDomain,
+      });
+
+      res.json({ success: true, portfolio: updated });
+    } catch (error: any) {
+      console.error("Error updating custom domain:", error);
+      res.status(500).json({ error: "Failed to update custom domain" });
+    }
+  });
+
+  // Get authenticated user's portfolio data (private)
+  app.get("/api/portfolio", async (req, res) => {
+    try {
+      if (!req.user) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+
+      const userId = (req.user as any).id;
+      const portfolio = await storage.getPortfolio(userId);
+
+      if (!portfolio) {
+        return res.status(404).json({ error: "Portfolio not found" });
+      }
+
+      res.json({
+        id: portfolio.id,
+        isPublic: portfolio.isPublic,
+        customDomain: portfolio.customDomain,
+        themeId: portfolio.themeId,
+        accentColor: portfolio.accentColor,
+        showStats: portfolio.showStats,
+        social: portfolio.social,
+      });
+    } catch (error: any) {
+      console.error("Error getting user portfolio:", error);
+      res.status(500).json({ error: "Failed to get portfolio" });
+    }
+  });
+
   // Stripe Billing - Create checkout session
   app.post("/api/billing/checkout", async (req, res) => {
     // TODO: Implement Stripe Checkout
     res.json({ url: "https://checkout.stripe.com/placeholder" });
   });
+
+  // Development Login Endpoints (only in development)
+  if (process.env.NODE_ENV === "development") {
+    app.post("/api/dev/login", async (req, res) => {
+      try {
+        console.log("Development login request received:", req.body);
+        const { userType } = req.body;
+
+        if (!userType || !["free", "pro"].includes(userType)) {
+          return res
+            .status(400)
+            .json({ error: "Invalid user type. Must be 'free' or 'pro'" });
+        }
+
+        let handle: string;
+        let plan: "FREE" | "PRO";
+
+        if (userType === "pro") {
+          handle = "dev-pro-user";
+          plan = "PRO";
+        } else {
+          handle = "dev-free-user";
+          plan = "FREE";
+        }
+
+        console.log(`Attempting to get user with handle: ${handle}`);
+        // Check if development user exists, create if not
+        let user = await storage.getUserByHandle(handle);
+
+        if (!user) {
+          console.log(`Creating new development user: ${handle}`);
+          // Create development user
+          const userData = {
+            githubId: `dev-${userType}-${Date.now()}`,
+            handle,
+            name:
+              userType === "pro"
+                ? "Pro Development User"
+                : "Free Development User",
+            email: `dev-${userType}@portpilot.dev`,
+            avatarUrl: `https://api.dicebear.com/7.x/avataaars/svg?seed=${userType}`,
+            bio: `Development ${plan.toLowerCase()} user for testing PortPilot features`,
+            location: "Development Environment",
+            website: "https://portpilot.dev",
+            plan,
+          };
+
+          user = await storage.createUser(userData);
+          console.log(`Created user:`, user.id, user.handle);
+
+          // Create portfolio for the user
+          const portfolioData = {
+            userId: user.id,
+            themeId: userType === "pro" ? "terminal" : "sleek",
+            accentColor: userType === "pro" ? "#00ff00" : "#3b82f6",
+            isPublic: true,
+            showStats: true,
+            social: {
+              github: `https://github.com/dev-${userType}`,
+              x: `https://x.com/dev_${userType}`,
+              linkedin: `https://linkedin.com/in/dev-${userType}`,
+              website: "https://portpilot.dev",
+            },
+          };
+
+          const portfolio = await storage.createPortfolio(portfolioData);
+          console.log(`Created portfolio:`, portfolio.id);
+        } else {
+          console.log(`Using existing user: ${user.handle} (${user.plan})`);
+          // Update plan if it's different
+          if (user.plan !== plan) {
+            console.log(`Updating user plan from ${user.plan} to ${plan}`);
+            await storage.updateUser(user.id, { plan });
+          }
+        }
+
+        // Log the user in
+        console.log(`Attempting to log in user: ${user.handle}`);
+        req.login(user, (err) => {
+          if (err) {
+            console.error("Login error:", err);
+            return res
+              .status(500)
+              .json({ error: "Login failed", details: err.message });
+          }
+          console.log(
+            `Successfully logged in user: ${user.handle} (${user.plan})`
+          );
+          res.json({
+            success: true,
+            user: {
+              id: user.id,
+              handle: user.handle,
+              name: user.name,
+              plan: user.plan,
+            },
+          });
+        });
+      } catch (error: any) {
+        console.error("Error during dev login:", error);
+        res.status(500).json({
+          error: "Development login failed",
+          details: error.message,
+          stack:
+            process.env.NODE_ENV === "development" ? error.stack : undefined,
+        });
+      }
+    });
+
+    app.post("/api/dev/logout", async (req, res) => {
+      req.logout((err) => {
+        if (err) {
+          return res.status(500).json({ error: "Logout failed" });
+        }
+        res.json({ success: true });
+      });
+    });
+  }
 
   // Migration endpoint to fix analyzed field for existing projects
   app.post("/api/migrate-analyzed", async (req, res) => {

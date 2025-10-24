@@ -1,22 +1,22 @@
 import {
-  users,
+  integrations,
   portfolios,
   projects,
-  integrations,
   syncJobs,
-  type User,
-  type InsertUser,
-  type Portfolio,
-  type InsertPortfolio,
-  type Project,
-  type InsertProject,
-  type Integration,
+  users,
   type InsertIntegration,
-  type SyncJob,
+  type InsertPortfolio,
+  type InsertProject,
   type InsertSyncJob,
+  type InsertUser,
+  type Integration,
+  type Portfolio,
+  type Project,
+  type SyncJob,
+  type User,
 } from "@shared/schema";
+import { and, desc, eq } from "drizzle-orm";
 import { db } from "./db";
-import { eq, and, desc } from "drizzle-orm";
 
 export interface IStorage {
   // Users
@@ -30,24 +30,43 @@ export interface IStorage {
   getPortfolio(userId: string): Promise<Portfolio | undefined>;
   getPortfolioByHandle(handle: string): Promise<Portfolio | undefined>;
   createPortfolio(portfolio: InsertPortfolio): Promise<Portfolio>;
-  updatePortfolio(id: string, updates: Partial<Portfolio>): Promise<Portfolio | undefined>;
+  updatePortfolio(
+    id: string,
+    updates: Partial<Portfolio>
+  ): Promise<Portfolio | undefined>;
+  updatePortfolioVisibility(
+    portfolioId: string,
+    isPublic: boolean
+  ): Promise<Portfolio | undefined>;
 
   // Projects
   getProjects(portfolioId: string): Promise<Project[]>;
   getProject(id: string): Promise<Project | undefined>;
   createProject(project: InsertProject): Promise<Project>;
-  updateProject(id: string, updates: Partial<Project>): Promise<Project | undefined>;
+  updateProject(
+    id: string,
+    updates: Partial<Project>
+  ): Promise<Project | undefined>;
   deleteProject(id: string): Promise<void>;
   updateProjectOrder(projectId: string, order: number): Promise<void>;
 
   // Integrations
-  getIntegration(userId: string, provider: string): Promise<Integration | undefined>;
+  getIntegration(
+    userId: string,
+    provider: string
+  ): Promise<Integration | undefined>;
   createIntegration(integration: InsertIntegration): Promise<Integration>;
-  updateIntegration(id: string, updates: Partial<Integration>): Promise<Integration | undefined>;
+  updateIntegration(
+    id: string,
+    updates: Partial<Integration>
+  ): Promise<Integration | undefined>;
 
   // Sync Jobs
   createSyncJob(job: InsertSyncJob): Promise<SyncJob>;
-  updateSyncJob(id: string, updates: Partial<SyncJob>): Promise<SyncJob | undefined>;
+  updateSyncJob(
+    id: string,
+    updates: Partial<SyncJob>
+  ): Promise<SyncJob | undefined>;
   getUserSyncJobs(userId: string, limit?: number): Promise<SyncJob[]>;
 }
 
@@ -59,24 +78,30 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getUserByGithubId(githubId: string): Promise<User | undefined> {
-    const [user] = await db.select().from(users).where(eq(users.githubId, githubId));
+    const [user] = await db
+      .select()
+      .from(users)
+      .where(eq(users.githubId, githubId));
     return user || undefined;
   }
 
   async getUserByHandle(handle: string): Promise<User | undefined> {
-    const [user] = await db.select().from(users).where(eq(users.handle, handle));
+    const [user] = await db
+      .select()
+      .from(users)
+      .where(eq(users.handle, handle));
     return user || undefined;
   }
 
   async createUser(insertUser: InsertUser): Promise<User> {
-    const [user] = await db
-      .insert(users)
-      .values(insertUser)
-      .returning();
+    const [user] = await db.insert(users).values(insertUser).returning();
     return user;
   }
 
-  async updateUser(id: string, updates: Partial<User>): Promise<User | undefined> {
+  async updateUser(
+    id: string,
+    updates: Partial<User>
+  ): Promise<User | undefined> {
     const [user] = await db
       .update(users)
       .set({ ...updates, updatedAt: new Date() })
@@ -102,23 +127,38 @@ export class DatabaseStorage implements IStorage {
       .from(portfolios)
       .innerJoin(users, eq(portfolios.userId, users.id))
       .where(eq(users.handle, handle));
-    
+
     return result?.portfolio || undefined;
   }
 
   async createPortfolio(insertPortfolio: InsertPortfolio): Promise<Portfolio> {
     const [portfolio] = await db
       .insert(portfolios)
-      .values(insertPortfolio)
+      .values(insertPortfolio as any)
       .returning();
     return portfolio;
   }
 
-  async updatePortfolio(id: string, updates: Partial<Portfolio>): Promise<Portfolio | undefined> {
+  async updatePortfolio(
+    id: string,
+    updates: Partial<Portfolio>
+  ): Promise<Portfolio | undefined> {
     const [portfolio] = await db
       .update(portfolios)
       .set(updates)
       .where(eq(portfolios.id, id))
+      .returning();
+    return portfolio || undefined;
+  }
+
+  async updatePortfolioVisibility(
+    portfolioId: string,
+    isPublic: boolean
+  ): Promise<Portfolio | undefined> {
+    const [portfolio] = await db
+      .update(portfolios)
+      .set({ isPublic })
+      .where(eq(portfolios.id, portfolioId))
       .returning();
     return portfolio || undefined;
   }
@@ -143,12 +183,15 @@ export class DatabaseStorage implements IStorage {
   async createProject(insertProject: InsertProject): Promise<Project> {
     const [project] = await db
       .insert(projects)
-      .values(insertProject)
+      .values(insertProject as any)
       .returning();
     return project;
   }
 
-  async updateProject(id: string, updates: Partial<Project>): Promise<Project | undefined> {
+  async updateProject(
+    id: string,
+    updates: Partial<Project>
+  ): Promise<Project | undefined> {
     const [project] = await db
       .update(projects)
       .set(updates)
@@ -162,22 +205,29 @@ export class DatabaseStorage implements IStorage {
   }
 
   async updateProjectOrder(projectId: string, order: number): Promise<void> {
-    await db
-      .update(projects)
-      .set({ order })
-      .where(eq(projects.id, projectId));
+    await db.update(projects).set({ order }).where(eq(projects.id, projectId));
   }
 
   // Integrations
-  async getIntegration(userId: string, provider: string): Promise<Integration | undefined> {
+  async getIntegration(
+    userId: string,
+    provider: string
+  ): Promise<Integration | undefined> {
     const [integration] = await db
       .select()
       .from(integrations)
-      .where(and(eq(integrations.userId, userId), eq(integrations.provider, provider)));
+      .where(
+        and(
+          eq(integrations.userId, userId),
+          eq(integrations.provider, provider)
+        )
+      );
     return integration || undefined;
   }
 
-  async createIntegration(insertIntegration: InsertIntegration): Promise<Integration> {
+  async createIntegration(
+    insertIntegration: InsertIntegration
+  ): Promise<Integration> {
     const [integration] = await db
       .insert(integrations)
       .values(insertIntegration)
@@ -185,7 +235,10 @@ export class DatabaseStorage implements IStorage {
     return integration;
   }
 
-  async updateIntegration(id: string, updates: Partial<Integration>): Promise<Integration | undefined> {
+  async updateIntegration(
+    id: string,
+    updates: Partial<Integration>
+  ): Promise<Integration | undefined> {
     const [integration] = await db
       .update(integrations)
       .set({ ...updates, updatedAt: new Date() })
@@ -196,14 +249,14 @@ export class DatabaseStorage implements IStorage {
 
   // Sync Jobs
   async createSyncJob(insertJob: InsertSyncJob): Promise<SyncJob> {
-    const [job] = await db
-      .insert(syncJobs)
-      .values(insertJob)
-      .returning();
+    const [job] = await db.insert(syncJobs).values(insertJob).returning();
     return job;
   }
 
-  async updateSyncJob(id: string, updates: Partial<SyncJob>): Promise<SyncJob | undefined> {
+  async updateSyncJob(
+    id: string,
+    updates: Partial<SyncJob>
+  ): Promise<SyncJob | undefined> {
     const [job] = await db
       .update(syncJobs)
       .set({ ...updates, updatedAt: new Date() })
@@ -212,7 +265,10 @@ export class DatabaseStorage implements IStorage {
     return job || undefined;
   }
 
-  async getUserSyncJobs(userId: string, limit: number = 10): Promise<SyncJob[]> {
+  async getUserSyncJobs(
+    userId: string,
+    limit: number = 10
+  ): Promise<SyncJob[]> {
     return await db
       .select()
       .from(syncJobs)
