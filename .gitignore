@@ -50,3 +50,5 @@ vite.config.ts.*
 .replit
 replit.nix
 cookies.txt
+
+docker-compose*

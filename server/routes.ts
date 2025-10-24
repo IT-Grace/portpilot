@@ -27,6 +27,16 @@ async function fetchGitHubRepositories(accessToken: string): Promise<any[]> {
 }
 
 export async function registerRoutes(app: Express): Promise<Server> {
+  // Health Check Endpoint for Docker
+  app.get("/api/health", (req, res) => {
+    res.status(200).json({
+      status: "healthy",
+      timestamp: new Date().toISOString(),
+      uptime: process.uptime(),
+      environment: process.env.NODE_ENV || "development",
+    });
+  });
+
   // TODO: NextAuth will handle /api/auth/* routes
 
   // User API - Get current authenticated user
