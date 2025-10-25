@@ -3,9 +3,10 @@ dotenv.config();
 
 import express, { NextFunction, type Request, Response } from "express";
 import session from "express-session";
+import path from "path";
+import { fileURLToPath } from "url";
 import passport from "./auth";
 import { registerRoutes } from "./routes";
-import { log, serveStatic, setupVite } from "./vite";
 
 const app = express();
 app.set("env", process.env.NODE_ENV || "development");
@@ -28,6 +29,17 @@ app.use(
 // Initialize Passport
 app.use(passport.initialize());
 app.use(passport.session());
+
+// Simple logger utility
+const log = (message: string, source = "express") => {
+  const formattedTime = new Date().toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: true,
+  });
+  console.log(`${formattedTime} [${source}] ${message}`);
+};
 
 app.use((req, res, next) => {
   const start = Date.now();
@@ -103,28 +115,45 @@ app.get("/api/auth/session", (req, res) => {
     throw err;
   });
 
-  // importantly only setup vite in development and after
-  // setting up all the other routes so the catch-all route
-  // doesn't interfere with the other routes
+  // Setup routes based on environment
   console.log(
     `Environment: NODE_ENV=${process.env.NODE_ENV}, app.get('env')=${app.get(
       "env"
     )}`
   );
+
   if (app.get("env") === "development") {
     console.log("Setting up Vite development server...");
+    // Import from vite-dev.ts which has vite dependency
+    const { setupVite } = await import("./vite-dev");
     await setupVite(app, server);
   } else {
     console.log("Setting up static file serving for production...");
-    serveStatic(app);
+
+    // Production static file serving - no vite dependency
+    const __dirname = path.dirname(fileURLToPath(import.meta.url));
+    const publicDir = path.join(__dirname, "public");
+
+    log(`Serving static files from: ${publicDir}`);
+
+    // Serve static assets
+    app.use(express.static(publicDir));
+
+    // Catch-all route for client-side routing
+    app.use("*", (req, res) => {
+      // Skip API routes - they should have been handled already
+      if (req.originalUrl.startsWith("/api/")) {
+        return res.status(404).json({ error: "API endpoint not found" });
+      }
+
+      const indexPath = path.join(publicDir, "index.html");
+      res.sendFile(indexPath);
+    });
   }
 
   // ALWAYS serve the app on the port specified in the environment variable PORT
-  // Other ports are firewalled. Default to 5000 if not specified.
-  // this serves both the API and the client.
-  // It is the only port that is not firewalled.
   const port = parseInt(process.env.PORT || "3000", 10);
   server.listen(port, () => {
-    log(`serving on port ${port}`);
+    log(`Server listening on port ${port}`);
   });
 })();
