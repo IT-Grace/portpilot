@@ -75,7 +75,7 @@ app.use((req, res, next) => {
 app.get("/api/auth/signin/github", passport.authenticate("github"));
 
 app.get(
-  "/api/auth/callback/github",
+  "/api/auth/github/callback",
   passport.authenticate("github", {
     failureRedirect: "/?error=auth_failed",
     failureFlash: false,
