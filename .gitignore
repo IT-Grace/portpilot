@@ -52,3 +52,5 @@ replit.nix
 cookies.txt
 
 docker-compose*
+dev-Dockerfile*
+test-prod*

@@ -125,7 +125,8 @@ app.get("/api/auth/session", (req, res) => {
   if (app.get("env") === "development") {
     console.log("Setting up Vite development server...");
     // Import from vite-dev.ts which has vite dependency
-    const { setupVite } = await import("./vite-dev");
+    // Using .js extension for runtime resolution
+    const { setupVite } = await import("./vite-dev.js");
     await setupVite(app, server);
   } else {
     console.log("Setting up static file serving for production...");

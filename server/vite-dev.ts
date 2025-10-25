@@ -4,7 +4,6 @@ import { type Server } from "http";
 import { nanoid } from "nanoid";
 import path from "path";
 import { createLogger, createServer as createViteServer } from "vite";
-import viteConfig from "../vite.config";
 
 const viteLogger = createLogger();
 
@@ -26,9 +25,9 @@ export async function setupVite(app: Express, server: Server) {
     allowedHosts: true as const,
   };
 
+  // Don't import vite.config.ts - let Vite find it automatically
   const vite = await createViteServer({
-    ...viteConfig,
-    configFile: false,
+    configFile: path.resolve(process.cwd(), "vite.config.ts"), // Path to config, not import
     customLogger: {
       ...viteLogger,
       error: (msg, options) => {
@@ -51,8 +50,7 @@ export async function setupVite(app: Express, server: Server) {
 
     try {
       const clientTemplate = path.resolve(
-        import.meta.dirname,
-        "..",
+        process.cwd(),
         "client",
         "index.html"
       );

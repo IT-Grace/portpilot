@@ -1,110 +1,78 @@
 # ============================================
-# PortPilot Multi-Stage Docker Build
-# ============================================
-
-# ============================================
 # Stage 1: Base Node.js Environment
 # ============================================
 FROM node:20-alpine AS base
-
-# Install system dependencies for native modules
+# Add build tools for any native deps
 RUN apk add --no-cache \
     libc6-compat \
     python3 \
     make \
     g++ \
     && rm -rf /var/cache/apk/*
-
-# Set working directory
 WORKDIR /app
-
-# Copy package files
+# Copy package manifests so we can install deps
 COPY package*.json ./
-
 # ============================================
-# Stage 2: Dependencies Installation
+# Stage 2: Install ALL deps (dev + prod) for building
 # ============================================
 FROM base AS deps
-
-# Install all dependencies (dev + prod)
+# install all deps including dev deps (we need vite, esbuild, etc. to build)
 RUN npm ci --include=dev
-
 # ============================================
-# Stage 3: Development Environment
-# ============================================
-FROM deps AS development
-
-# Copy source code
-COPY . .
-
-# Create uploads directory
-RUN mkdir -p uploads
-
-# Expose development port
-EXPOSE 3000
-
-# Development command with hot reload
-CMD ["npm", "run", "dev"]
-
-# ============================================
-# Stage 4: Build Stage
+# Stage 3: Builder (runs your build script)
 # ============================================
 FROM deps AS builder
-
-# Copy source code
+# bring in the rest of the source code
 COPY . .
-
-# Build the application
+# run your build:
+# - vite build -> dist/public
+# - esbuild server/index.ts -> dist/index.js
 RUN npm run build
-
+# At this point, /app/dist now contains:
+#   dist/index.js
+#   dist/public/*
 # ============================================
-# Stage 5: Production Dependencies
+# Stage 4: Production deps only
+# We'll create a clean node_modules with just prod deps
 # ============================================
-FROM base AS prod-deps
-
-# Install only production dependencies
+FROM node:20-alpine AS prod-deps
+WORKDIR /app
+RUN apk add --no-cache libc6-compat && rm -rf /var/cache/apk/*
+COPY package*.json ./
+# install production dependencies only
 RUN npm ci --omit=dev && npm cache clean --force
-
 # ============================================
-# Stage 6: Production Runtime
+# Stage 5: Production runtime
 # ============================================
 FROM node:20-alpine AS production
-
-# Install runtime dependencies
-RUN apk add --no-cache \
-    dumb-init \
-    && rm -rf /var/cache/apk/*
-
-# Create app user for security
+# add dumb-init for signal handling
+RUN apk add --no-cache dumb-init && rm -rf /var/cache/apk/*
+# create non-root user
 RUN addgroup --system --gid 1001 nodejs \
     && adduser --system --uid 1001 --ingroup nodejs nodejs
-
-# Set working directory
 WORKDIR /app
-
-# Copy production dependencies
+# copy production node_modules from prod-deps
 COPY --from=prod-deps /app/node_modules ./node_modules
-
-# Copy built application
-COPY --from=builder --chown=nodejs:nodejs /app/dist ./dist
-COPY --from=builder --chown=nodejs:nodejs /app/package.json ./
-COPY --from=builder --chown=nodejs:nodejs /app/shared ./shared
-
-# Create uploads directory with proper permissions
+# copy package.json so "npm start" works
+COPY --from=builder /app/package.json ./
+# copy built app output
+#   dist/index.js (server runtime)
+#   dist/public/* (static frontend)
+COPY --from=builder /app/dist ./dist
+# OPTIONAL: if your runtime code imports from ./shared at runtime
+# (not just types), keep this. Otherwise you can delete it.
+COPY --from=builder /app/shared ./shared
+# make uploads dir writable
 RUN mkdir -p uploads && chown -R nodejs:nodejs uploads
-
-# Switch to non-root user
-USER nodejs
-
-# Expose production port
+# env for runtime
+ENV NODE_ENV=production
+ENV PORT=3000
 EXPOSE 3000
-
-# Health check
+# healthcheck (adjust /api/health if your route differs)
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
     CMD node -e "require('http').get('http://localhost:3000/api/health', (res) => { process.exit(res.statusCode === 200 ? 0 : 1) })"
-
-# Use dumb-init to handle signals properly
+# run as non-root
+USER nodejs
 ENTRYPOINT ["dumb-init", "--"]
-
-# Start the application
+# npm start = "NODE_ENV=production node dist/index.js"
 CMD ["npm", "start"]
