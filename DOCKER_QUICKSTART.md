@@ -185,7 +185,7 @@ docker system prune -a
 3. Fill in:
    - **Application name**: PortPilot Development
    - **Homepage URL**: http://localhost:3000
-   - **Authorization callback URL**: http://localhost:3000/api/auth/callback/github
+   - **Authorization callback URL**: http://localhost:3000/api/auth/github/callback
 4. Copy Client ID and Client Secret to `.env` file
 
 ## Next Steps

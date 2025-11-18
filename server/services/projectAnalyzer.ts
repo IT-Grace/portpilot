@@ -73,7 +73,7 @@ export class ProjectAnalyzer {
         this.octokit.repos.get({ owner, repo }),
         this.octokit.repos.listLanguages({ owner, repo }),
         this.getFileContent(owner, repo, "README.md"),
-        this.getFileContent(owner, repo, "package.json"),
+        this.getFileContent(owner, repo, "package.json"), //TODO: THIS MIGHT NOT BE ENOUGH
       ]
     );
 

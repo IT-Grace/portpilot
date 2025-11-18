@@ -324,7 +324,7 @@ UPSTASH_REDIS_REST_TOKEN=...
 
 Provide clear README steps to:
 
-Create GitHub OAuth app and add callback URL /api/auth/callback/github.
+Create GitHub OAuth app and add callback URL /api/auth/github/callback.
 
 Provision Postgres (Neon/Render) and run prisma migrate.
 

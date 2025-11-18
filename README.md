@@ -185,7 +185,7 @@ SESSION_SECRET="your-session-encryption-secret"
 3. Configure the application:
    - **Application name**: PortPilot
    - **Homepage URL**: `http://localhost:3000`
-   - **Authorization callback URL**: `http://localhost:3000/api/auth/callback/github`
+   - **Authorization callback URL**: `http://localhost:3000/api/auth/github/callback`
 4. Copy the Client ID and Client Secret to your `.env` file
 
 ### **OpenAI API Key**
