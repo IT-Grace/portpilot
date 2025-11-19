@@ -146,6 +146,7 @@ uploads/
 scripts/
 !scripts/init-db.sql
 !scripts/backup.sh
+!scripts/make-admin.ts
 
 # ==========================================
 # Nginx Configuration (separate image)
