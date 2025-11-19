@@ -38,7 +38,7 @@ async function makeAdmin() {
       process.exit(1);
     }
 
-    if (user.role === "admin") {
+    if (user.role === "ADMIN") {
       console.log(`✅ User ${githubHandle} is already an admin!`);
       process.exit(0);
     }
@@ -47,7 +47,7 @@ async function makeAdmin() {
 
     await db
       .update(users)
-      .set({ role: "admin" })
+      .set({ role: "ADMIN" })
       .where(eq(users.id, user.id));
 
     console.log(`✅ Success! ${githubHandle} is now an admin`);
