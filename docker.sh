@@ -186,6 +186,30 @@ restore() {
     print_warning "Database restore functionality needs to be implemented"
 }
 
+# Function to make a user admin
+make_admin() {
+    if [ -z "$2" ]; then
+        print_error "Please specify GitHub handle: $0 make-admin <github-handle>"
+        exit 1
+    fi
+    
+    local github_handle="$2"
+    
+    print_status "Promoting $github_handle to admin..."
+    
+    # Use migrator container (has tsx) to run the script
+    if [ "$3" = "prod-local" ]; then
+        docker-compose -f docker-compose.prod.local.yml --env-file .env.production.local \
+            run --rm migrator npm run make-admin "$github_handle"
+    elif [ "$3" = "prod" ]; then
+        docker-compose -f docker-compose.prod.yml --env-file .env.production \
+            run --rm migrator npm run make-admin "$github_handle"
+    else
+        # Development
+        docker-compose run --rm app npm run make-admin "$github_handle"
+    fi
+}
+
 # Function to show status
 status() {
     print_status "PortPilot Docker Status:"
@@ -216,6 +240,7 @@ help() {
     echo "  stop               - Stop all services"
     echo "  logs [env] [svc]   - View logs (env: prod, prod-local, or omit for dev)"
     echo "  status             - Show service status"
+    echo "  make-admin <handle> [env] - Promote user to admin (env: prod-local, prod, or omit for dev)"
     echo "  clean              - Clean up all Docker resources"
     echo "  backup             - Create database backup (production)"
     echo "  restore <file>     - Restore database from backup"
@@ -225,6 +250,7 @@ help() {
     echo "  $0 dev:start                    # Start development environment"
     echo "  $0 prod-local:build             # Build production images for local testing"
     echo "  $0 prod-local:start             # Start production locally"
+    echo "  $0 make-admin IT-Grace prod-local  # Make IT-Grace admin in prod-local"
     echo "  $0 logs                         # View dev logs"
     echo "  $0 logs prod-local app          # View production local app logs"
     echo "  $0 stop                         # Stop all environments"
@@ -258,6 +284,9 @@ case "${1:-help}" in
         ;;
     "status")
         status
+        ;;
+    "make-admin")
+        make_admin "$@"
         ;;
     "clean")
         clean
