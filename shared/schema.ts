@@ -13,6 +13,7 @@ import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
 export const planEnum = pgEnum("plan", ["FREE", "PRO"]);
+export const roleEnum = pgEnum("role", ["user", "moderator", "admin"]);
 export const syncStatusEnum = pgEnum("sync_status", [
   "queued",
   "running",
@@ -37,6 +38,8 @@ export const users = pgTable("users", {
   location: text("location"),
   website: text("website"),
   plan: planEnum("plan").default("FREE").notNull(),
+  role: roleEnum("role").default("user").notNull(),
+  isActive: boolean("is_active").default(true).notNull(),
   stripeCustomerId: varchar("stripe_customer_id"),
   stripeSubscriptionId: varchar("stripe_subscription_id"),
 });
@@ -132,6 +135,23 @@ export const syncJobs = pgTable("sync_jobs", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
+// Admin audit logging
+export const adminActions = pgTable("admin_actions", {
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  adminId: varchar("admin_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  targetUserId: varchar("target_user_id").references(() => users.id, {
+    onDelete: "set null",
+  }),
+  action: text("action").notNull(),
+  details: json("details").$type<Record<string, any>>(),
+  ipAddress: varchar("ip_address"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 // Auth.js tables
 export const accounts = pgTable(
   "accounts",
@@ -214,6 +234,19 @@ export const syncJobsRelations = relations(syncJobs, ({ one }) => ({
   }),
 }));
 
+export const adminActionsRelations = relations(adminActions, ({ one }) => ({
+  admin: one(users, {
+    fields: [adminActions.adminId],
+    references: [users.id],
+    relationName: "adminActions",
+  }),
+  targetUser: one(users, {
+    fields: [adminActions.targetUserId],
+    references: [users.id],
+    relationName: "targetedActions",
+  }),
+}));
+
 export const accountsRelations = relations(accounts, ({ one }) => ({
   user: one(users, {
     fields: [accounts.userId],
@@ -255,6 +288,11 @@ export const insertSyncJobSchema = createInsertSchema(syncJobs).omit({
   updatedAt: true,
 });
 
+export const insertAdminActionSchema = createInsertSchema(adminActions).omit({
+  id: true,
+  createdAt: true,
+});
+
 // Types
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;
@@ -270,6 +308,9 @@ export type Integration = typeof integrations.$inferSelect;
 
 export type InsertSyncJob = z.infer<typeof insertSyncJobSchema>;
 export type SyncJob = typeof syncJobs.$inferSelect;
+
+export type InsertAdminAction = z.infer<typeof insertAdminActionSchema>;
+export type AdminAction = typeof adminActions.$inferSelect;
 
 export type Account = typeof accounts.$inferSelect;
 export type Session = typeof sessions.$inferSelect;

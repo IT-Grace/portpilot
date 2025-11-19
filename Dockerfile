@@ -1,78 +1,120 @@
 # ============================================
-# Stage 1: Base Node.js Environment
+# Stage 1: Base - Install dependencies
 # ============================================
 FROM node:20-alpine AS base
-# Add build tools for any native deps
+
+WORKDIR /app
+
+# Install dependencies for native modules
 RUN apk add --no-cache \
-    libc6-compat \
     python3 \
     make \
     g++ \
-    && rm -rf /var/cache/apk/*
-WORKDIR /app
-# Copy package manifests so we can install deps
+    git \
+    curl
+
+# Copy package files
 COPY package*.json ./
+
 # ============================================
-# Stage 2: Install ALL deps (dev + prod) for building
+# Stage 2: Development
 # ============================================
-FROM base AS deps
-# install all deps including dev deps (we need vite, esbuild, etc. to build)
-RUN npm ci --include=dev
-# ============================================
-# Stage 3: Builder (runs your build script)
-# ============================================
-FROM deps AS builder
-# bring in the rest of the source code
+FROM base AS development
+
+# Install all dependencies (including devDependencies)
+RUN npm ci
+
+# Copy application code
 COPY . .
-# run your build:
-# - vite build -> dist/public
-# - esbuild server/index.ts -> dist/index.js
-RUN npm run build
-# At this point, /app/dist now contains:
-#   dist/index.js
-#   dist/public/*
+
+# Expose port
+EXPOSE 3000
+
+# Start development server with hot reload
+CMD ["npm", "run", "dev"]
+
 # ============================================
-# Stage 4: Production deps only
-# We'll create a clean node_modules with just prod deps
+# Stage 3: Builder - Build production assets
+# ============================================
+FROM base AS builder
+
+# Install all dependencies for building
+RUN npm ci
+
+# Copy application code
+COPY . .
+
+# Build client (Vite) and server (esbuild)
+RUN npm run build
+
+# ============================================
+# Stage 4: Production dependencies only
 # ============================================
 FROM node:20-alpine AS prod-deps
+
 WORKDIR /app
-RUN apk add --no-cache libc6-compat && rm -rf /var/cache/apk/*
+
+# Install libc6-compat for compatibility
+RUN apk add --no-cache libc6-compat && \
+    rm -rf /var/cache/apk/*
+
+# Copy package files
 COPY package*.json ./
-# install production dependencies only
-RUN npm ci --omit=dev && npm cache clean --force
+
+# Install production dependencies only
+RUN npm ci --omit=dev && \
+    npm cache clean --force
+
 # ============================================
-# Stage 5: Production runtime
+# Stage 5: Production Runtime
 # ============================================
 FROM node:20-alpine AS production
-# add dumb-init for signal handling
-RUN apk add --no-cache dumb-init && rm -rf /var/cache/apk/*
-# create non-root user
-RUN addgroup --system --gid 1001 nodejs \
-    && adduser --system --uid 1001 --ingroup nodejs nodejs
+
+# Install dumb-init for proper signal handling
+RUN apk add --no-cache dumb-init && \
+    rm -rf /var/cache/apk/*
+
 WORKDIR /app
-# copy production node_modules from prod-deps
+
+# Create non-root user
+RUN addgroup --system --gid 1001 nodejs && \
+    adduser --system --uid 1001 --ingroup nodejs nodejs
+
+# Copy production node_modules from prod-deps stage
 COPY --from=prod-deps /app/node_modules ./node_modules
-# copy package.json so "npm start" works
+
+# Copy package.json for npm start
 COPY --from=builder /app/package.json ./
-# copy built app output
-#   dist/index.js (server runtime)
-#   dist/public/* (static frontend)
+
+# Copy built assets from builder stage
 COPY --from=builder /app/dist ./dist
-# OPTIONAL: if your runtime code imports from ./shared at runtime
-# (not just types), keep this. Otherwise you can delete it.
+
+# Copy shared code (imported at runtime)
 COPY --from=builder /app/shared ./shared
-# make uploads dir writable
-RUN mkdir -p uploads && chown -R nodejs:nodejs uploads
-# env for runtime
+
+# Copy drizzle migrations (needed by db:migrate)
+COPY --from=builder /app/drizzle ./drizzle
+
+# Create uploads directory with correct permissions
+RUN mkdir -p uploads && \
+    chown -R nodejs:nodejs uploads
+
+# Environment variables
 ENV NODE_ENV=production
 ENV PORT=3000
+
+# Expose port
 EXPOSE 3000
-# healthcheck (adjust /api/health if your route differs)
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+
+# Health check using Node.js (no curl dependency)
+HEALTHCHECK --interval=30s --timeout=3s --start-period=40s --retries=3 \
     CMD node -e "require('http').get('http://localhost:3000/api/health', (res) => { process.exit(res.statusCode === 200 ? 0 : 1) })"
-# run as non-root
+
+# Switch to non-root user
 USER nodejs
+
+# Use dumb-init as entrypoint for proper signal handling
 ENTRYPOINT ["dumb-init", "--"]
-# npm start = "NODE_ENV=production node dist/index.js"
+
+# Start production server
 CMD ["npm", "start"]

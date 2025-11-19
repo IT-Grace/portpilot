@@ -2,6 +2,7 @@ import type { Express } from "express";
 import express from "express";
 import { createServer, type Server } from "http";
 import path from "path";
+import { requireAdmin } from "./middleware/adminAuth";
 import { ProjectAnalyzer } from "./services/projectAnalyzer";
 import { storage } from "./storage";
 import { deleteFile, getFileUrl, imageUpload } from "./utils/fileUpload";
@@ -60,6 +61,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         email: user.email,
         avatarUrl: user.image,
         plan: user.plan,
+        role: user.role,
       });
     } catch (error: any) {
       console.error("Error getting current user:", error);
@@ -890,7 +892,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     app.post("/api/dev/login", async (req, res) => {
       try {
         console.log("Development login request received:", req.body);
-        const { userType } = req.body;
+        const { userType, role } = req.body;
 
         if (!userType || !["free", "pro"].includes(userType)) {
           return res
@@ -898,14 +900,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
             .json({ error: "Invalid user type. Must be 'free' or 'pro'" });
         }
 
+        const userRole =
+          role && ["user", "moderator", "admin"].includes(role) ? role : "user";
+
         let handle: string;
         let plan: "FREE" | "PRO";
 
         if (userType === "pro") {
-          handle = "dev-pro-user";
+          handle = `dev-pro-${userRole}`;
           plan = "PRO";
         } else {
-          handle = "dev-free-user";
+          handle = `dev-free-${userRole}`;
           plan = "FREE";
         }
 
@@ -917,34 +922,41 @@ export async function registerRoutes(app: Express): Promise<Server> {
           console.log(`Creating new development user: ${handle}`);
           // Create development user
           const userData = {
-            githubId: `dev-${userType}-${Date.now()}`,
+            githubId: `dev-${userType}-${userRole}-${Date.now()}`,
             handle,
-            name:
-              userType === "pro"
-                ? "Pro Development User"
-                : "Free Development User",
-            email: `dev-${userType}@portpilot.dev`,
-            avatarUrl: `https://api.dicebear.com/7.x/avataaars/svg?seed=${userType}`,
-            bio: `Development ${plan.toLowerCase()} user for testing PortPilot features`,
+            name: `${
+              userRole.charAt(0).toUpperCase() + userRole.slice(1)
+            } Development User (${plan})`,
+            email: `dev-${userType}-${userRole}@portpilot.dev`,
+            avatarUrl: `https://api.dicebear.com/7.x/avataaars/svg?seed=${userType}-${userRole}`,
+            bio: `Development ${plan.toLowerCase()} ${userRole} for testing PortPilot features`,
             location: "Development Environment",
             website: "https://portpilot.dev",
             plan,
           };
 
           user = await storage.createUser(userData);
-          console.log(`Created user:`, user.id, user.handle);
+
+          // Set role after creation
+          await storage.updateUserRole(
+            user.id,
+            userRole as "user" | "moderator" | "admin"
+          );
+          user = await storage.getUser(user.id);
+
+          console.log(`Created user:`, user!.id, user!.handle, user!.role);
 
           // Create portfolio for the user
           const portfolioData = {
-            userId: user.id,
+            userId: user!.id,
             themeId: userType === "pro" ? "terminal" : "sleek",
             accentColor: userType === "pro" ? "#00ff00" : "#3b82f6",
             isPublic: true,
             showStats: true,
             social: {
-              github: `https://github.com/dev-${userType}`,
-              x: `https://x.com/dev_${userType}`,
-              linkedin: `https://linkedin.com/in/dev-${userType}`,
+              github: `https://github.com/dev-${userType}-${userRole}`,
+              x: `https://x.com/dev_${userType}_${userRole}`,
+              linkedin: `https://linkedin.com/in/dev-${userType}-${userRole}`,
               website: "https://portpilot.dev",
             },
           };
@@ -952,16 +964,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const portfolio = await storage.createPortfolio(portfolioData);
           console.log(`Created portfolio:`, portfolio.id);
         } else {
-          console.log(`Using existing user: ${user.handle} (${user.plan})`);
-          // Update plan if it's different
+          console.log(
+            `Using existing user: ${user.handle} (${user.plan}, ${user.role})`
+          );
+          // Update plan and role if they're different
           if (user.plan !== plan) {
             console.log(`Updating user plan from ${user.plan} to ${plan}`);
             await storage.updateUser(user.id, { plan });
           }
+          if (user.role !== userRole) {
+            console.log(`Updating user role from ${user.role} to ${userRole}`);
+            await storage.updateUserRole(
+              user.id,
+              userRole as "user" | "moderator" | "admin"
+            );
+          }
+
+          // Refresh user data
+          user = await storage.getUser(user.id);
         }
 
         // Log the user in
-        console.log(`Attempting to log in user: ${user.handle}`);
+        console.log(`Attempting to log in user: ${user!.handle}`);
         req.login(user, (err) => {
           if (err) {
             console.error("Login error:", err);
@@ -970,15 +994,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
               .json({ error: "Login failed", details: err.message });
           }
           console.log(
-            `Successfully logged in user: ${user.handle} (${user.plan})`
+            `Successfully logged in user: ${user!.handle} (${user!.plan}, ${
+              user!.role
+            })`
           );
           res.json({
             success: true,
             user: {
-              id: user.id,
-              handle: user.handle,
-              name: user.name,
-              plan: user.plan,
+              id: user!.id,
+              handle: user!.handle,
+              name: user!.name,
+              plan: user!.plan,
+              role: user!.role,
             },
           });
         });
@@ -1056,6 +1083,233 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/webhooks/github", async (req, res) => {
     // TODO: Verify signature and process webhook
     res.json({ received: true });
+  });
+
+  // Admin API Routes
+  // Get all users (with pagination)
+  app.get("/api/admin/users", requireAdmin, async (req, res) => {
+    try {
+      const limit = parseInt(req.query.limit as string) || 50;
+      const offset = parseInt(req.query.offset as string) || 0;
+
+      const allUsers = await storage.getAllUsers(limit, offset);
+
+      // Remove sensitive information before sending
+      const sanitizedUsers = allUsers.map((user) => ({
+        id: user.id,
+        createdAt: user.createdAt,
+        updatedAt: user.updatedAt,
+        githubId: user.githubId,
+        handle: user.handle,
+        name: user.name,
+        email: user.email,
+        avatarUrl: user.avatarUrl,
+        bio: user.bio,
+        location: user.location,
+        website: user.website,
+        plan: user.plan,
+        role: user.role,
+        isActive: user.isActive,
+      }));
+
+      res.json({ users: sanitizedUsers, limit, offset });
+    } catch (error: any) {
+      console.error("Error fetching users:", error);
+      res.status(500).json({ error: "Failed to fetch users" });
+    }
+  });
+
+  // Get users by role
+  app.get("/api/admin/users/role/:role", requireAdmin, async (req, res) => {
+    try {
+      const role = req.params.role as "user" | "moderator" | "admin";
+      if (!["user", "moderator", "admin"].includes(role)) {
+        return res.status(400).json({ error: "Invalid role" });
+      }
+
+      const roleUsers = await storage.getUsersByRole(role);
+
+      const sanitizedUsers = roleUsers.map((user) => ({
+        id: user.id,
+        createdAt: user.createdAt,
+        updatedAt: user.updatedAt,
+        handle: user.handle,
+        name: user.name,
+        email: user.email,
+        avatarUrl: user.avatarUrl,
+        plan: user.plan,
+        role: user.role,
+        isActive: user.isActive,
+      }));
+
+      res.json({ users: sanitizedUsers, role });
+    } catch (error: any) {
+      console.error("Error fetching users by role:", error);
+      res.status(500).json({ error: "Failed to fetch users by role" });
+    }
+  });
+
+  // Update user role
+  app.patch("/api/admin/users/:userId/role", requireAdmin, async (req, res) => {
+    try {
+      const { userId } = req.params;
+      const { role } = req.body;
+
+      if (!["user", "moderator", "admin"].includes(role)) {
+        return res.status(400).json({ error: "Invalid role" });
+      }
+
+      const updatedUser = await storage.updateUserRole(userId, role);
+      if (!updatedUser) {
+        return res.status(404).json({ error: "User not found" });
+      }
+
+      // Log admin action
+      await storage.logAdminAction({
+        adminId: (req.user as any).id,
+        targetUserId: userId,
+        action: "update_role",
+        details: { newRole: role } as any,
+        ipAddress: req.ip,
+      });
+
+      res.json({
+        success: true,
+        user: {
+          id: updatedUser.id,
+          handle: updatedUser.handle,
+          role: updatedUser.role,
+        },
+      });
+    } catch (error: any) {
+      console.error("Error updating user role:", error);
+      res.status(500).json({ error: "Failed to update user role" });
+    }
+  });
+
+  // Update user plan
+  app.patch("/api/admin/users/:userId/plan", requireAdmin, async (req, res) => {
+    try {
+      const { userId } = req.params;
+      const { plan } = req.body;
+
+      if (!["FREE", "PRO"].includes(plan)) {
+        return res.status(400).json({ error: "Invalid plan" });
+      }
+
+      const updatedUser = await storage.updateUserPlan(userId, plan);
+      if (!updatedUser) {
+        return res.status(404).json({ error: "User not found" });
+      }
+
+      // Log admin action
+      await storage.logAdminAction({
+        adminId: (req.user as any).id,
+        targetUserId: userId,
+        action: "update_plan",
+        details: { newPlan: plan } as any,
+        ipAddress: req.ip,
+      });
+
+      res.json({
+        success: true,
+        user: {
+          id: updatedUser.id,
+          handle: updatedUser.handle,
+          plan: updatedUser.plan,
+        },
+      });
+    } catch (error: any) {
+      console.error("Error updating user plan:", error);
+      res.status(500).json({ error: "Failed to update user plan" });
+    }
+  });
+
+  // Toggle user active status (suspend/unsuspend)
+  app.patch(
+    "/api/admin/users/:userId/toggle-active",
+    requireAdmin,
+    async (req, res) => {
+      try {
+        const { userId } = req.params;
+
+        const updatedUser = await storage.toggleUserActiveStatus(userId);
+        if (!updatedUser) {
+          return res.status(404).json({ error: "User not found" });
+        }
+
+        // Log admin action
+        await storage.logAdminAction({
+          adminId: (req.user as any).id,
+          targetUserId: userId,
+          action: updatedUser.isActive ? "unsuspend_user" : "suspend_user",
+          details: { isActive: updatedUser.isActive } as any,
+          ipAddress: req.ip,
+        });
+
+        res.json({
+          success: true,
+          user: {
+            id: updatedUser.id,
+            handle: updatedUser.handle,
+            isActive: updatedUser.isActive,
+          },
+        });
+      } catch (error: any) {
+        console.error("Error toggling user active status:", error);
+        res.status(500).json({ error: "Failed to toggle user active status" });
+      }
+    }
+  );
+
+  // Delete user
+  app.delete("/api/admin/users/:userId", requireAdmin, async (req, res) => {
+    try {
+      const { userId } = req.params;
+
+      const user = await storage.getUser(userId);
+      if (!user) {
+        return res.status(404).json({ error: "User not found" });
+      }
+
+      // Prevent deleting other admins
+      if (user.role === "admin") {
+        return res
+          .status(403)
+          .json({ error: "Cannot delete admin users via API" });
+      }
+
+      // Log admin action before deletion
+      await storage.logAdminAction({
+        adminId: (req.user as any).id,
+        targetUserId: userId,
+        action: "delete_user",
+        details: { deletedUser: user.handle } as any,
+        ipAddress: req.ip,
+      });
+
+      await storage.deleteUserById(userId);
+
+      res.json({ success: true, message: "User deleted successfully" });
+    } catch (error: any) {
+      console.error("Error deleting user:", error);
+      res.status(500).json({ error: "Failed to delete user" });
+    }
+  });
+
+  // Get admin action logs
+  app.get("/api/admin/actions", requireAdmin, async (req, res) => {
+    try {
+      const limit = parseInt(req.query.limit as string) || 50;
+      const offset = parseInt(req.query.offset as string) || 0;
+
+      const actions = await storage.getAdminActions(limit, offset);
+
+      res.json({ actions, limit, offset });
+    } catch (error: any) {
+      console.error("Error fetching admin actions:", error);
+      res.status(500).json({ error: "Failed to fetch admin actions" });
+    }
   });
 
   // Serve uploaded files

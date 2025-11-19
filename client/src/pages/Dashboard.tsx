@@ -15,7 +15,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Globe, LogOut, User } from "lucide-react";
+import { Globe, LogOut, Shield, User } from "lucide-react";
 import { useEffect, useState } from "react";
 
 interface CurrentUser {
@@ -25,6 +25,7 @@ interface CurrentUser {
   email: string | null;
   avatarUrl: string | null;
   plan: string;
+  role?: string;
 }
 
 export default function Dashboard() {
@@ -56,6 +57,13 @@ export default function Dashboard() {
 
       if (response.ok) {
         const userData = await response.json();
+        console.log("User data received:", userData); // Debug log
+        console.log(
+          "User role:",
+          userData.role,
+          "Is admin?",
+          userData.role === "admin"
+        );
         setUser(userData);
       } else if (response.status === 401) {
         // Not authenticated, redirect to sign in
@@ -87,6 +95,12 @@ export default function Dashboard() {
   }
 
   const handleTabChange = (value: string) => {
+    // Redirect to admin page if admin tab is clicked
+    if (value === "admin") {
+      window.location.href = "/admin";
+      return;
+    }
+
     setActiveTab(value);
     // Update URL without page reload
     const url = new URL(window.location.href);
@@ -167,6 +181,15 @@ export default function Dashboard() {
                   <User className="h-4 w-4 mr-2" />
                   Profile
                 </DropdownMenuItem>
+                {user.role === "admin" && (
+                  <DropdownMenuItem
+                    onClick={() => (window.location.href = "/admin")}
+                    data-testid="menuitem-admin"
+                  >
+                    <Shield className="h-4 w-4 mr-2" />
+                    Admin Panel
+                  </DropdownMenuItem>
+                )}
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
                   onClick={handleSignOut}
@@ -188,7 +211,11 @@ export default function Dashboard() {
           onValueChange={handleTabChange}
           className="space-y-8"
         >
-          <TabsList className="grid w-full grid-cols-5 max-w-3xl">
+          <TabsList
+            className={`grid w-full ${
+              user.role === "admin" ? "grid-cols-6" : "grid-cols-5"
+            } max-w-4xl`}
+          >
             <TabsTrigger value="overview" data-testid="tab-overview">
               Overview
             </TabsTrigger>
@@ -204,6 +231,12 @@ export default function Dashboard() {
             <TabsTrigger value="publishing" data-testid="tab-publishing">
               Publishing
             </TabsTrigger>
+            {user.role === "admin" && (
+              <TabsTrigger value="admin" data-testid="tab-admin">
+                <Shield className="h-4 w-4 mr-2" />
+                Admin
+              </TabsTrigger>
+            )}
           </TabsList>
 
           <TabsContent value="overview" className="space-y-6">

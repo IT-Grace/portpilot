@@ -9,7 +9,7 @@ build
 server/public
 
 # Environment variables (CRITICAL - DO NOT COMMIT)
-.env
+.env*
 .env.local
 .env.production
 .env.development
@@ -17,6 +17,12 @@ server/public
 # Database
 *.db
 *.sqlite
+*.sql
+*.sql.gz
+
+# Backups
+backups/
+*.backup
 
 # Logs
 logs
@@ -54,3 +60,6 @@ cookies.txt
 docker-compose*
 dev-Dockerfile*
 test-prod*
+
+# Drizzle meta cache (keep migration SQL files, ignore cache)
+drizzle/meta/
