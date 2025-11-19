@@ -44,6 +44,9 @@ RUN npm ci
 # Copy application code
 COPY . .
 
+# Ensure drizzle folder exists (migrations should be committed to git)
+RUN mkdir -p drizzle
+
 # Build client (Vite) and server (esbuild)
 RUN npm run build
 
@@ -92,7 +95,7 @@ COPY --from=builder /app/dist ./dist
 # Copy shared code (imported at runtime)
 COPY --from=builder /app/shared ./shared
 
-# Copy drizzle migrations (needed by db:migrate)
+# Copy drizzle migrations folder
 COPY --from=builder /app/drizzle ./drizzle
 
 # Create uploads directory with correct permissions

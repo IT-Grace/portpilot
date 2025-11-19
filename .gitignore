@@ -61,5 +61,5 @@ docker-compose*
 dev-Dockerfile*
 test-prod*
 
-# Drizzle meta cache (keep migration SQL files, ignore cache)
-drizzle/meta/
+# Drizzle migrations (commit everything - needed for production)
+# drizzle/meta/ contains _journal.json which is required for migrations
