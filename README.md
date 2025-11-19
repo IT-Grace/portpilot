@@ -118,11 +118,13 @@ cp .env.example .env
 
 3. **Database Setup**
 
-Initialize your PostgreSQL database and push the schema:
+Initialize your PostgreSQL database and run migrations:
 
 ```bash
-npm run db:push
+npm run db:migrate
 ```
+
+> **Note:** For schema development, see [MIGRATIONS.md](./MIGRATIONS.md) for the full migration workflow.
 
 4. **Seed Demo Data**
 
@@ -337,10 +339,13 @@ The application uses PostgreSQL with Drizzle ORM for type-safe database operatio
 npm run dev          # Start development server
 npm run build        # Build for production
 npm start            # Start production server
-npm run db:push      # Push schema changes to database
+npm run db:generate  # Generate migration files from schema
+npm run db:migrate   # Apply pending migrations to database
 npm run seed         # Seed database with demo data
 npm run type-check   # Run TypeScript type checking
 ```
+
+> **Database Migrations:** See [MIGRATIONS.md](./MIGRATIONS.md) for comprehensive migration documentation.
 
 ## 🤝 Contributing
 

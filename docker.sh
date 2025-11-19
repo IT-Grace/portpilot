@@ -49,8 +49,14 @@ build_dev() {
 
 build_prod() {
     print_status "Building PortPilot production images..."
-    docker-compose -f docker-compose.prod.yml build --no-cache
+    docker-compose -f docker-compose.prod.yml --env-file .env.production build --no-cache
     print_success "Production images built successfully!"
+}
+
+build_prod_local() {
+    print_status "Building PortPilot production images (local testing)..."
+    docker-compose -f docker-compose.prod.local.yml --env-file .env.production.local build --no-cache
+    print_success "Production local images built successfully!"
 }
 
 # Function to start development environment
@@ -84,27 +90,59 @@ dev_start() {
 
 # Function to start production environment
 prod_start() {
-    check_env
+    if [ ! -f .env.production ]; then
+        print_error ".env.production file not found. Please create it before starting production."
+        exit 1
+    fi
+    
     print_status "Starting PortPilot production environment..."
     
     # Start services
-    docker-compose -f docker-compose.prod.yml up -d
+    docker-compose -f docker-compose.prod.yml --env-file .env.production up -d
     
     print_success "PortPilot production environment is running!"
-    print_status "Access the application at: https://localhost"
+    print_status "Access the application at: https://portpilot.co.uk"
+}
+
+# Function to start production environment locally
+prod_local_start() {
+    if [ ! -f .env.production.local ]; then
+        print_error ".env.production.local file not found. Please create it before starting."
+        exit 1
+    fi
+    
+    print_status "Starting PortPilot production environment (local testing)..."
+    
+    # Start services
+    docker-compose -f docker-compose.prod.local.yml --env-file .env.production.local up -d
+    
+    # Wait for database
+    print_status "Waiting for database to be ready..."
+    sleep 10
+    
+    print_success "PortPilot production local environment is running!"
+    print_status "Access the application at: http://localhost"
+    print_status "View logs with: docker-compose -f docker-compose.prod.local.yml logs -f"
 }
 
 # Function to stop services
 stop() {
     print_status "Stopping PortPilot services..."
-    docker-compose down
+    docker-compose down 2>/dev/null || true
     docker-compose -f docker-compose.prod.yml down 2>/dev/null || true
+    docker-compose -f docker-compose.prod.local.yml down 2>/dev/null || true
     print_success "Services stopped!"
 }
 
 # Function to view logs
 logs() {
-    docker-compose logs -f "${2:-}"
+    if [ "$2" = "prod" ]; then
+        docker-compose -f docker-compose.prod.yml --env-file .env.production logs -f "${3:-}"
+    elif [ "$2" = "prod-local" ]; then
+        docker-compose -f docker-compose.prod.local.yml --env-file .env.production.local logs -f "${3:-}"
+    else
+        docker-compose logs -f "${2:-}"
+    fi
 }
 
 # Function to clean up
@@ -152,9 +190,14 @@ restore() {
 status() {
     print_status "PortPilot Docker Status:"
     echo
-    docker-compose ps 2>/dev/null || echo "Development environment not running"
+    echo "=== Development Environment ==="
+    docker-compose ps 2>/dev/null || echo "Not running"
     echo
-    docker-compose -f docker-compose.prod.yml ps 2>/dev/null || echo "Production environment not running"
+    echo "=== Production Environment ==="
+    docker-compose -f docker-compose.prod.yml ps 2>/dev/null || echo "Not running"
+    echo
+    echo "=== Production Local Environment ==="
+    docker-compose -f docker-compose.prod.local.yml ps 2>/dev/null || echo "Not running"
 }
 
 # Function to show help
@@ -164,22 +207,27 @@ help() {
     echo "Usage: $0 [command]"
     echo
     echo "Commands:"
-    echo "  dev:start     - Start development environment"
-    echo "  dev:build     - Build development images"
-    echo "  prod:start    - Start production environment"
-    echo "  prod:build    - Build production images"
-    echo "  stop          - Stop all services"
-    echo "  logs [service]- View logs (optionally for specific service)"
-    echo "  status        - Show service status"
-    echo "  clean         - Clean up all Docker resources"
-    echo "  backup        - Create database backup (production)"
-    echo "  restore <file>- Restore database from backup"
-    echo "  help          - Show this help message"
+    echo "  dev:start          - Start development environment"
+    echo "  dev:build          - Build development images"
+    echo "  prod:start         - Start production environment (real deployment)"
+    echo "  prod:build         - Build production images"
+    echo "  prod-local:start   - Start production environment locally (for testing)"
+    echo "  prod-local:build   - Build production local images"
+    echo "  stop               - Stop all services"
+    echo "  logs [env] [svc]   - View logs (env: prod, prod-local, or omit for dev)"
+    echo "  status             - Show service status"
+    echo "  clean              - Clean up all Docker resources"
+    echo "  backup             - Create database backup (production)"
+    echo "  restore <file>     - Restore database from backup"
+    echo "  help               - Show this help message"
     echo
     echo "Examples:"
-    echo "  $0 dev:start              # Start development environment"
-    echo "  $0 logs app              # View application logs"
-    echo "  $0 prod:build            # Build production images"
+    echo "  $0 dev:start                    # Start development environment"
+    echo "  $0 prod-local:build             # Build production images for local testing"
+    echo "  $0 prod-local:start             # Start production locally"
+    echo "  $0 logs                         # View dev logs"
+    echo "  $0 logs prod-local app          # View production local app logs"
+    echo "  $0 stop                         # Stop all environments"
 }
 
 # Main command handler
@@ -195,6 +243,12 @@ case "${1:-help}" in
         ;;
     "prod:build")
         build_prod
+        ;;
+    "prod-local:start")
+        prod_local_start
+        ;;
+    "prod-local:build")
+        build_prod_local
         ;;
     "stop")
         stop

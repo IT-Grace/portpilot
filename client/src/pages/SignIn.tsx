@@ -6,13 +6,23 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { ArrowLeft, Crown, Github, Globe, Shield } from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { ArrowLeft, Crown, Github, Globe, Shield, UserCog } from "lucide-react";
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
 
 export default function SignIn() {
   const [, navigate] = useLocation();
   const [isDevLoading, setIsDevLoading] = useState<string | null>(null);
+  const [devRole, setDevRole] = useState<"user" | "moderator" | "admin">(
+    "user"
+  );
   const isDevelopment = import.meta.env.DEV;
 
   const handleGitHubSignIn = () => {
@@ -28,7 +38,7 @@ export default function SignIn() {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ userType }),
+        body: JSON.stringify({ userType, role: devRole }),
         credentials: "include",
       });
 
@@ -36,7 +46,10 @@ export default function SignIn() {
 
       if (response.ok) {
         if (data.success) {
-          console.log(`Logged in as ${data.user.plan} user:`, data.user);
+          console.log(
+            `Logged in as ${data.user.plan} user (${data.user.role}):`,
+            data.user
+          );
           navigate("/dashboard");
         } else {
           console.error("Dev login failed - no success flag:", data);
@@ -119,6 +132,44 @@ export default function SignIn() {
                     Quick login for testing different plan features
                   </p>
 
+                  {/* Role Selection */}
+                  <div className="space-y-2">
+                    <label className="text-xs font-medium text-foreground flex items-center gap-2">
+                      <UserCog className="h-3.5 w-3.5" />
+                      User Role
+                    </label>
+                    <Select
+                      value={devRole}
+                      onValueChange={(value: "user" | "moderator" | "admin") =>
+                        setDevRole(value)
+                      }
+                    >
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder="Select role" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="user">
+                          <div className="flex items-center gap-2">
+                            <Shield className="h-4 w-4" />
+                            <span>User</span>
+                          </div>
+                        </SelectItem>
+                        <SelectItem value="moderator">
+                          <div className="flex items-center gap-2">
+                            <UserCog className="h-4 w-4" />
+                            <span>Moderator</span>
+                          </div>
+                        </SelectItem>
+                        <SelectItem value="admin">
+                          <div className="flex items-center gap-2">
+                            <Crown className="h-4 w-4" />
+                            <span>Admin</span>
+                          </div>
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
                   <div className="grid grid-cols-2 gap-3">
                     <Button
                       variant="outline"
@@ -155,6 +206,10 @@ export default function SignIn() {
                     <p>Free: 6 projects, 2 themes (Sleek, CardGrid)</p>
                     <p>
                       Pro: 30 projects, 4 themes (includes Terminal, Magazine)
+                    </p>
+                    <p className="pt-1">
+                      Role: {devRole} - Admin features:{" "}
+                      {devRole === "admin" ? "Enabled" : "Disabled"}
                     </p>
                   </div>
                 </div>

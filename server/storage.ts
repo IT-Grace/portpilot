@@ -1,9 +1,12 @@
 import {
+  adminActions,
   integrations,
   portfolios,
   projects,
   syncJobs,
   users,
+  type AdminAction,
+  type InsertAdminAction,
   type InsertIntegration,
   type InsertPortfolio,
   type InsertProject,
@@ -68,6 +71,22 @@ export interface IStorage {
     updates: Partial<SyncJob>
   ): Promise<SyncJob | undefined>;
   getUserSyncJobs(userId: string, limit?: number): Promise<SyncJob[]>;
+
+  // Admin
+  getAllUsers(limit?: number, offset?: number): Promise<User[]>;
+  getUsersByRole(role: "user" | "moderator" | "admin"): Promise<User[]>;
+  updateUserRole(
+    userId: string,
+    role: "user" | "moderator" | "admin"
+  ): Promise<User | undefined>;
+  updateUserPlan(
+    userId: string,
+    plan: "FREE" | "PRO"
+  ): Promise<User | undefined>;
+  toggleUserActiveStatus(userId: string): Promise<User | undefined>;
+  deleteUserById(userId: string): Promise<void>;
+  logAdminAction(action: InsertAdminAction): Promise<AdminAction>;
+  getAdminActions(limit?: number, offset?: number): Promise<AdminAction[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -275,6 +294,77 @@ export class DatabaseStorage implements IStorage {
       .where(eq(syncJobs.userId, userId))
       .orderBy(desc(syncJobs.createdAt))
       .limit(limit);
+  }
+
+  // Admin
+  async getAllUsers(limit: number = 50, offset: number = 0): Promise<User[]> {
+    return await db
+      .select()
+      .from(users)
+      .orderBy(desc(users.createdAt))
+      .limit(limit)
+      .offset(offset);
+  }
+
+  async getUsersByRole(role: "user" | "moderator" | "admin"): Promise<User[]> {
+    return await db.select().from(users).where(eq(users.role, role));
+  }
+
+  async updateUserRole(
+    userId: string,
+    role: "user" | "moderator" | "admin"
+  ): Promise<User | undefined> {
+    const [user] = await db
+      .update(users)
+      .set({ role, updatedAt: new Date() })
+      .where(eq(users.id, userId))
+      .returning();
+    return user || undefined;
+  }
+
+  async updateUserPlan(
+    userId: string,
+    plan: "FREE" | "PRO"
+  ): Promise<User | undefined> {
+    const [user] = await db
+      .update(users)
+      .set({ plan, updatedAt: new Date() })
+      .where(eq(users.id, userId))
+      .returning();
+    return user || undefined;
+  }
+
+  async toggleUserActiveStatus(userId: string): Promise<User | undefined> {
+    const currentUser = await this.getUser(userId);
+    if (!currentUser) return undefined;
+
+    const [user] = await db
+      .update(users)
+      .set({ isActive: !currentUser.isActive, updatedAt: new Date() })
+      .where(eq(users.id, userId))
+      .returning();
+    return user || undefined;
+  }
+
+  async deleteUserById(userId: string): Promise<void> {
+    await db.delete(users).where(eq(users.id, userId));
+  }
+
+  async logAdminAction(action: InsertAdminAction): Promise<AdminAction> {
+    const [log] = await db.insert(adminActions).values(action).returning();
+    return log;
+  }
+
+  async getAdminActions(
+    limit: number = 50,
+    offset: number = 0
+  ): Promise<AdminAction[]> {
+    return await db
+      .select()
+      .from(adminActions)
+      .orderBy(desc(adminActions.createdAt))
+      .limit(limit)
+      .offset(offset);
   }
 }
 

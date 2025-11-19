@@ -8,6 +8,8 @@
     "build": "vite build && node build-server.js",
     "start": "set NODE_ENV=production && node dist/index.js",
     "check": "tsc",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "tsx server/migrate.ts",
     "db:push": "drizzle-kit push",
     "seed": "set NODE_ENV=development && tsx server/seed.ts"
   },
