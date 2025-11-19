@@ -19,7 +19,7 @@ async function main() {
     console.log("Creating role enum type...");
     await pool.query(`
       DO $$ BEGIN
-        CREATE TYPE "role" AS ENUM('USER', 'MODERATOR', 'ADMIN');
+        CREATE TYPE "role" AS ENUM('user', 'moderator', 'admin');
       EXCEPTION
         WHEN duplicate_object THEN null;
       END $$;
@@ -30,7 +30,7 @@ async function main() {
     console.log("Adding role column to users table...");
     await pool.query(`
       ALTER TABLE users 
-      ADD COLUMN IF NOT EXISTS role "role" DEFAULT 'USER' NOT NULL;
+      ADD COLUMN IF NOT EXISTS role "role" DEFAULT 'user' NOT NULL;
     `);
     console.log("✅ Role column added\n");
 

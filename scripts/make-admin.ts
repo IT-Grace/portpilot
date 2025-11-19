@@ -40,14 +40,14 @@ async function makeAdmin() {
       process.exit(1);
     }
 
-    if (user.role === "ADMIN") {
+    if (user.role === "admin") {
       console.log(`✅ User ${githubHandle} is already an admin!`);
       process.exit(0);
     }
 
     console.log(`📝 Updating ${githubHandle} to admin role...`);
 
-    await db.update(users).set({ role: "ADMIN" }).where(eq(users.id, user.id));
+    await db.update(users).set({ role: "admin" }).where(eq(users.id, user.id));
 
     console.log(`✅ Success! ${githubHandle} is now an admin`);
     console.log(`\n🔐 Admin Dashboard: http://localhost/admin`);
