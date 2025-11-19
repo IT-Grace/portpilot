@@ -19,6 +19,7 @@ server/public
 *.sqlite
 *.sql
 *.sql.gz
+!drizzle/**/*.sql
 
 # Backups
 backups/
