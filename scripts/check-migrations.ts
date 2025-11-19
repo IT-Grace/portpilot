@@ -21,9 +21,9 @@ async function main() {
         AND table_name = '__drizzle_migrations'
       );
     `);
-    
+
     console.log("Migration tracking table exists:", tableCheck.rows[0].exists);
-    
+
     if (tableCheck.rows[0].exists) {
       // Show what migrations are recorded
       const migrations = await pool.query(`
@@ -32,7 +32,7 @@ async function main() {
       console.log("\nRecorded migrations:");
       console.log(migrations.rows);
     }
-    
+
     // Check actual database schema
     console.log("\nChecking users table columns:");
     const columns = await pool.query(`
@@ -42,11 +42,10 @@ async function main() {
       ORDER BY ordinal_position;
     `);
     console.log(columns.rows);
-    
+
     // Check if role column exists
-    const roleExists = columns.rows.some(col => col.column_name === 'role');
+    const roleExists = columns.rows.some((col) => col.column_name === "role");
     console.log("\n'role' column exists in users table:", roleExists);
-    
   } catch (error) {
     console.error("Error:", error);
   } finally {

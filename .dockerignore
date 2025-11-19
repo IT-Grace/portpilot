@@ -147,6 +147,7 @@ scripts/
 !scripts/init-db.sql
 !scripts/backup.sh
 !scripts/make-admin.ts
+!scripts/check-migrations.ts
 
 # ==========================================
 # Nginx Configuration (separate image)
