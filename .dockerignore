@@ -149,6 +149,7 @@ scripts/
 !scripts/make-admin.ts
 !scripts/check-migrations.ts
 !scripts/fix-schema.ts
+!scripts/fix-role-enum.ts
 
 # ==========================================
 # Nginx Configuration (separate image)
