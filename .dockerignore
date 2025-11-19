@@ -148,6 +148,7 @@ scripts/
 !scripts/backup.sh
 !scripts/make-admin.ts
 !scripts/check-migrations.ts
+!scripts/fix-schema.ts
 
 # ==========================================
 # Nginx Configuration (separate image)
