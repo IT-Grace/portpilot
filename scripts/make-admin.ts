@@ -3,10 +3,10 @@
  * Usage: tsx scripts/make-admin.ts <github-handle>
  */
 
+import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
 import { users } from "../shared/schema";
-import { eq } from "drizzle-orm";
 
 const githubHandle = process.argv[2];
 
@@ -34,7 +34,9 @@ async function makeAdmin() {
 
     if (!user) {
       console.error(`❌ User not found: ${githubHandle}`);
-      console.log("\n💡 Make sure the user has signed in at least once via GitHub OAuth");
+      console.log(
+        "\n💡 Make sure the user has signed in at least once via GitHub OAuth"
+      );
       process.exit(1);
     }
 
@@ -45,10 +47,7 @@ async function makeAdmin() {
 
     console.log(`📝 Updating ${githubHandle} to admin role...`);
 
-    await db
-      .update(users)
-      .set({ role: "ADMIN" })
-      .where(eq(users.id, user.id));
+    await db.update(users).set({ role: "ADMIN" }).where(eq(users.id, user.id));
 
     console.log(`✅ Success! ${githubHandle} is now an admin`);
     console.log(`\n🔐 Admin Dashboard: http://localhost/admin`);
