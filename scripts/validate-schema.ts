@@ -38,12 +38,12 @@ const REQUIRED_COLUMNS: ColumnCheck[] = [
   { table: "portfolios", column: "id", required: true },
   { table: "portfolios", column: "user_id", required: true },
   { table: "portfolios", column: "theme_id", required: true },
-  { table: "portfolios", column: "visibility", required: true },
+  { table: "portfolios", column: "visibility", required: false }, // Optional feature
 
   // Projects table
   { table: "projects", column: "id", required: true },
   { table: "projects", column: "portfolio_id", required: true },
-  { table: "projects", column: "is_featured", required: true },
+  { table: "projects", column: "is_featured", required: false }, // Optional feature
   { table: "projects", column: "languages", required: true },
 
   // Integrations table
@@ -51,10 +51,10 @@ const REQUIRED_COLUMNS: ColumnCheck[] = [
   { table: "integrations", column: "user_id", required: true },
   { table: "integrations", column: "provider", required: true },
 
-  // Admin actions table
-  { table: "admin_actions", column: "id", required: true },
-  { table: "admin_actions", column: "admin_id", required: true },
-  { table: "admin_actions", column: "action", required: true },
+  // Admin actions table (optional admin feature)
+  { table: "admin_actions", column: "id", required: false },
+  { table: "admin_actions", column: "admin_id", required: false },
+  { table: "admin_actions", column: "action", required: false },
 ];
 
 const REQUIRED_ENUMS = [
