@@ -1,6 +1,7 @@
 import type { Express } from "express";
 import express from "express";
 import { createServer, type Server } from "http";
+import passport from "passport";
 import path from "path";
 import { requireAdmin } from "./middleware/adminAuth";
 import { ProjectAnalyzer } from "./services/projectAnalyzer";
@@ -35,6 +36,59 @@ export async function registerRoutes(app: Express): Promise<Server> {
       timestamp: new Date().toISOString(),
       uptime: process.uptime(),
       environment: process.env.NODE_ENV || "development",
+    });
+  });
+
+  // Local authentication endpoint for production-local testing
+  app.post("/api/auth/local", (req, res, next) => {
+    passport.authenticate("local", (err: any, user: any, info: any) => {
+      if (err) {
+        return res.status(500).json({ error: "Authentication error" });
+      }
+      if (!user) {
+        return res
+          .status(401)
+          .json({ error: info?.message || "Invalid credentials" });
+      }
+      req.logIn(user, (err) => {
+        if (err) {
+          return res.status(500).json({ error: "Login failed" });
+        }
+        return res.json({
+          id: user.id,
+          handle: user.handle,
+          name: user.name,
+          email: user.email,
+          role: user.role,
+          plan: user.plan,
+        });
+      });
+    })(req, res, next);
+  });
+
+  // Logout endpoint
+  app.post("/api/auth/logout", (req, res) => {
+    req.logout((err) => {
+      if (err) {
+        return res.status(500).json({ error: "Logout failed" });
+      }
+      res.json({ message: "Logged out successfully" });
+    });
+  });
+
+  // Get authenticated user session
+  app.get("/api/auth/me", (req, res) => {
+    if (!req.isAuthenticated() || !req.user) {
+      return res.status(401).json({ error: "Not authenticated" });
+    }
+    const user = req.user as any;
+    res.json({
+      id: user.id,
+      handle: user.handle,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      plan: user.plan,
     });
   });
 

@@ -1,6 +1,10 @@
 // Database setup for local PostgreSQL
 import dotenv from "dotenv";
-dotenv.config();
+
+// Load environment variables from .env file only if DATABASE_URL is not already set
+if (!process.env.DATABASE_URL) {
+  dotenv.config();
+}
 
 import * as schema from "@shared/schema";
 import { drizzle } from "drizzle-orm/node-postgres";

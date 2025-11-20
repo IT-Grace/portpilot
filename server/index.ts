@@ -16,13 +16,18 @@ app.use(express.urlencoded({ extended: false }));
 // Session middleware
 app.use(
   session({
-    secret: process.env.AUTH_SECRET || "fallback-secret",
+    secret:
+      process.env.SESSION_SECRET ||
+      process.env.AUTH_SECRET ||
+      "fallback-secret",
     resave: false,
     saveUninitialized: false,
     cookie: {
       secure: false, // Set to true in production with HTTPS
+      httpOnly: true,
       maxAge: 24 * 60 * 60 * 1000, // 24 hours
     },
+    proxy: process.env.NODE_ENV === "production", // Trust proxy in production
   })
 );
 

@@ -32,6 +32,7 @@ export const users = pgTable("users", {
   name: text("name"),
   email: varchar("email").unique(),
   emailVerified: timestamp("emailVerified"),
+  password: text("password"),
   image: text("image"),
   avatarUrl: text("avatar_url"),
   bio: text("bio"),

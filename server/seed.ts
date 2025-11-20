@@ -1,49 +1,143 @@
 import dotenv from "dotenv";
-dotenv.config();
+
+// Load environment variables from .env file only if DATABASE_URL is not already set
+if (!process.env.DATABASE_URL) {
+  dotenv.config();
+}
 
 import { portfolios, projects, users } from "@shared/schema";
+import bcrypt from "bcrypt";
+import { eq } from "drizzle-orm";
 import { db } from "./db";
 
 async function seed() {
   console.log("🌱 Seeding database...");
 
-  // Create demo user
-  const [user] = await db
-    .insert(users)
-    .values({
-      githubId: "demo-github-id",
-      handle: "demo",
-      name: "Alex Johnson",
-      email: "demo@portpilot.app",
-      avatarUrl: null,
-      bio: "Full-stack developer passionate about building beautiful, functional web applications. I love open source and sharing knowledge with the community.",
-      location: "San Francisco, CA",
-      website: "https://alexjohnson.dev",
-      plan: "FREE",
-    })
-    .returning();
+  // Determine if this is production-local environment
+  const isProdLocal =
+    process.env.NODE_ENV === "production" ||
+    process.env.DATABASE_URL?.includes("5434");
 
-  console.log("✅ Created demo user");
+  // Create admin users for production-local testing
+  if (isProdLocal) {
+    console.log("\n👑 Creating admin users for production-local testing...");
 
-  // Create portfolio
-  const [portfolio] = await db
-    .insert(portfolios)
-    .values({
-      userId: user.id,
-      themeId: "sleek",
-      accentColor: "#3b82f6",
-      isPublic: true,
-      showStats: true,
-      social: {
-        github: "https://github.com/demo",
-        x: "https://x.com/demo",
-        linkedin: "https://linkedin.com/in/demo",
+    // Admin on PRO plan
+    const adminProHandle = "admin-pro";
+    let adminPro = await db.query.users.findFirst({
+      where: eq(users.handle, adminProHandle),
+    });
+
+    if (!adminPro) {
+      const hashedPassword = await bcrypt.hash("Admin@123", 10);
+      [adminPro] = await db
+        .insert(users)
+        .values({
+          handle: adminProHandle,
+          name: "Admin Pro",
+          email: "admin-pro@portpilot.local",
+          password: hashedPassword,
+          role: "admin",
+          plan: "PRO",
+          bio: "Administrator account with PRO plan for testing",
+          avatarUrl: null,
+        })
+        .returning();
+
+      console.log(
+        "✅ Created admin-pro user (username: admin-pro, password: Admin@123)"
+      );
+    } else {
+      console.log("ℹ️  admin-pro user already exists");
+    }
+
+    // Admin on FREE plan
+    const adminFreeHandle = "admin-free";
+    let adminFree = await db.query.users.findFirst({
+      where: eq(users.handle, adminFreeHandle),
+    });
+
+    if (!adminFree) {
+      const hashedPassword = await bcrypt.hash("Admin@123", 10);
+      [adminFree] = await db
+        .insert(users)
+        .values({
+          handle: adminFreeHandle,
+          name: "Admin Free",
+          email: "admin-free@portpilot.local",
+          password: hashedPassword,
+          role: "admin",
+          plan: "FREE",
+          bio: "Administrator account with FREE plan for testing",
+          avatarUrl: null,
+        })
+        .returning();
+
+      console.log(
+        "✅ Created admin-free user (username: admin-free, password: Admin@123)"
+      );
+    } else {
+      console.log("ℹ️  admin-free user already exists");
+    }
+  }
+
+  // Check if demo user already exists
+  let user = await db.query.users.findFirst({
+    where: eq(users.handle, "demo"),
+  });
+
+  if (user) {
+    console.log("ℹ️  Demo user already exists, skipping user creation");
+  } else {
+    // Create demo user
+    [user] = await db
+      .insert(users)
+      .values({
+        githubId: "demo-github-id",
+        handle: "demo",
+        name: "Alex Johnson",
+        email: "demo@portpilot.app",
+        avatarUrl: null,
+        bio: "Full-stack developer passionate about building beautiful, functional web applications. I love open source and sharing knowledge with the community.",
+        location: "San Francisco, CA",
         website: "https://alexjohnson.dev",
-      },
-    })
-    .returning();
+        plan: "FREE",
+      })
+      .returning();
 
-  console.log("✅ Created portfolio");
+    console.log("✅ Created demo user");
+  }
+
+  // Check if portfolio already exists for demo user
+  let portfolio = await db.query.portfolios.findFirst({
+    where: eq(portfolios.userId, user.id),
+  });
+
+  if (portfolio) {
+    console.log(
+      "ℹ️  Demo portfolio already exists, skipping portfolio creation"
+    );
+  } else {
+    // Create portfolio
+    [portfolio] = await db
+      .insert(portfolios)
+      .values({
+        userId: user.id,
+        themeId: "sleek",
+        accentColor: "#3b82f6",
+        isPublic: true,
+        showStats: true,
+        social: {
+          github: "https://github.com/demo",
+          x: "https://x.com/demo",
+          linkedin: "https://linkedin.com/in/demo",
+          website: "https://alexjohnson.dev",
+        },
+      })
+      .returning();
+
+    console.log("✅ Created portfolio");
+  }
 
   // Create sample projects
   const projectsData: Array<{
@@ -169,11 +263,29 @@ async function seed() {
     },
   ];
 
-  await db.insert(projects).values(projectsData);
+  // Check if projects already exist for this portfolio
+  const existingProjects = await db.query.projects.findMany({
+    where: eq(projects.portfolioId, portfolio.id),
+  });
 
-  console.log("✅ Created sample projects");
+  if (existingProjects.length > 0) {
+    console.log(
+      `ℹ️  ${existingProjects.length} demo projects already exist, skipping project creation`
+    );
+  } else {
+    await db.insert(projects).values(projectsData);
+    console.log("✅ Created sample projects");
+  }
+
   console.log("\n✨ Seed completed!");
   console.log(`\n🌐 View demo portfolio at: http://localhost:3000/u/demo`);
+
+  // Show admin credentials for production-local
+  if (isProdLocal) {
+    console.log("\n👤 Admin Credentials for Testing:");
+    console.log("   PRO Plan:  username=admin-pro  password=Admin@123");
+    console.log("   FREE Plan: username=admin-free password=Admin@123");
+  }
 
   process.exit(0);
 }

@@ -1,8 +1,10 @@
 import { integrations, users } from "@shared/schema";
-import { and, eq } from "drizzle-orm";
+import bcrypt from "bcrypt";
+import { and, eq, or } from "drizzle-orm";
 import https from "https";
 import passport from "passport";
 import { Strategy as GitHubStrategy } from "passport-github2";
+import { Strategy as LocalStrategy } from "passport-local";
 import { db } from "./db";
 
 // Custom GitHub Strategy that doesn't fetch emails
@@ -165,6 +167,50 @@ passport.use(
       } catch (error) {
         console.error("Auth error:", error);
         return done(error, null);
+      }
+    }
+  )
+);
+
+// Configure Passport Local Strategy for username/password authentication
+passport.use(
+  new LocalStrategy(
+    {
+      usernameField: "username",
+      passwordField: "password",
+    },
+    async (username, password, done) => {
+      try {
+        // Find user by handle or email
+        const user = await db.query.users.findFirst({
+          where: or(eq(users.handle, username), eq(users.email, username)),
+        });
+
+        if (!user) {
+          return done(null, false, { message: "Invalid username or password" });
+        }
+
+        // Check if user has a password (not OAuth-only account)
+        if (!user.password) {
+          return done(null, false, {
+            message: "This account uses OAuth login",
+          });
+        }
+
+        // Verify password
+        const isValidPassword = await bcrypt.compare(password, user.password);
+        if (!isValidPassword) {
+          return done(null, false, { message: "Invalid username or password" });
+        }
+
+        // Check if account is active
+        if (!user.isActive) {
+          return done(null, false, { message: "Account is deactivated" });
+        }
+
+        return done(null, user);
+      } catch (error) {
+        return done(error);
       }
     }
   )

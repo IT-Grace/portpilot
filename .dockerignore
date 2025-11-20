@@ -150,6 +150,8 @@ scripts/
 !scripts/check-migrations.ts
 !scripts/fix-schema.ts
 !scripts/fix-role-enum.ts
+!scripts/preview-migrations.ts
+!scripts/validate-schema.ts
 
 # ==========================================
 # Nginx Configuration (separate image)
