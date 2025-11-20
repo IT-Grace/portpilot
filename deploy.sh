@@ -90,18 +90,24 @@ if [[ ! $REPLY =~ ^[Yy]$ ]]; then
     exit 1
 fi
 
-# Step 4: Build new images
-print_header "🔨 Step 4: Building Docker Images"
+# Step 4: Stop running containers
+print_header "🛑 Step 4: Stopping Running Containers"
+print_info "Stopping current containers gracefully..."
+docker compose -f docker-compose.prod.yml down
+print_success "Containers stopped successfully"
+
+# Step 5: Build new images
+print_header "🔨 Step 5: Building Docker Images"
 print_info "Building images with no cache to ensure fresh build..."
 docker compose -f docker-compose.prod.yml build --no-cache
 print_success "Docker images built successfully"
 
-# Step 5: Pre-deployment backup (automatic via docker-compose dependency)
-print_header "💾 Step 5: Pre-Deployment Backup"
+# Step 6: Pre-deployment backup (automatic via docker-compose dependency)
+print_header "💾 Step 6: Pre-Deployment Backup"
 print_info "Backup will be created automatically when starting services..."
 
-# Step 6: Run migrations with backup
-print_header "🗄️  Step 6: Running Database Migrations"
+# Step 7: Run migrations with backup
+print_header "🗄️  Step 7: Running Database Migrations"
 print_info "This will create a backup before running migrations..."
 docker compose -f docker-compose.prod.yml up pre-deploy-backup migrator
 
@@ -114,8 +120,8 @@ if [ $? -ne 0 ]; then
 fi
 print_success "Migrations completed successfully"
 
-# Step 7: Validate schema
-print_header "🔍 Step 7: Validating Database Schema"
+# Step 8: Validate schema
+print_header "🔍 Step 8: Validating Database Schema"
 docker compose -f docker-compose.prod.yml run --rm migrator npx tsx scripts/validate-schema.ts
 
 if [ $? -ne 0 ]; then
@@ -125,15 +131,15 @@ if [ $? -ne 0 ]; then
 fi
 print_success "Schema validation passed"
 
-# Step 8: Deploy application with zero-downtime
-print_header "🔄 Step 8: Deploying Application"
+# Step 9: Deploy application with zero-downtime
+print_header "🔄 Step 9: Deploying Application"
 print_info "Starting services..."
 docker compose -f docker-compose.prod.yml up -d app nginx redis
 
 print_success "Services started"
 
-# Step 9: Health check
-print_header "🏥 Step 9: Health Check"
+# Step 10: Health check
+print_header "🏥 Step 10: Health Check"
 print_info "Waiting for application to start (5 seconds)..."
 sleep 5
 
@@ -153,8 +159,8 @@ else
     fi
 fi
 
-# Step 10: Deployment summary
-print_header "📊 Step 10: Deployment Summary"
+# Step 11: Deployment summary
+print_header "📊 Step 11: Deployment Summary"
 echo ""
 docker compose -f docker-compose.prod.yml ps
 echo ""
