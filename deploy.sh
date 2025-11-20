@@ -105,14 +105,25 @@ print_info "Building images with no cache to ensure fresh build..."
 docker compose -f docker-compose.prod.yml build --no-cache
 print_success "Docker images built successfully"
 
-# Step 6: Pre-deployment backup (automatic via docker-compose dependency)
+# Step 6: Pre-deployment backup
 print_header "💾 Step 6: Pre-Deployment Backup"
-print_info "Backup will be created automatically when starting services..."
+print_info "Creating database backup..."
+mkdir -p backups
+BACKUP_FILE="backups/pre-deploy_$(date +%Y%m%d_%H%M%S).sql.gz"
+docker compose -f docker-compose.prod.yml exec -T database sh -c "pg_dump -U \${POSTGRES_USER:-portpilot} -d \${POSTGRES_DB:-portpilot}" | gzip > "$BACKUP_FILE"
 
-# Step 7: Run migrations with backup
+if [ -f "$BACKUP_FILE" ]; then
+    print_success "Backup created: $BACKUP_FILE"
+    ls -lh "$BACKUP_FILE"
+else
+    print_error "Backup creation failed!"
+    exit 1
+fi
+
+# Step 7: Run migrations
 print_header "🗄️  Step 7: Running Database Migrations"
-print_info "This will create a backup before running migrations..."
-docker compose -f docker-compose.prod.yml up pre-deploy-backup migrator
+print_info "Running migrations..."
+docker compose -f docker-compose.prod.yml run --rm migrator
 
 # Check if migration was successful
 if [ $? -ne 0 ]; then
