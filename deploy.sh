@@ -45,10 +45,10 @@ if [ ! -f "docker-compose.prod.yml" ]; then
     exit 1
 fi
 
-# Check if .env.production exists
-if [ ! -f ".env.production" ]; then
-    print_error ".env.production file not found!"
-    print_error "Please create .env.production with required environment variables."
+# Check if .env exists
+if [ ! -f ".env" ]; then
+    print_error ".env file not found!"
+    print_error "Please create .env with required environment variables."
     exit 1
 fi
 

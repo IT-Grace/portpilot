@@ -49,7 +49,7 @@ build_dev() {
 
 build_prod() {
     print_status "Building PortPilot production images..."
-    docker-compose -f docker-compose.prod.yml --env-file .env.production build --no-cache
+    docker-compose -f docker-compose.prod.yml build --no-cache
     print_success "Production images built successfully!"
 }
 
@@ -90,15 +90,15 @@ dev_start() {
 
 # Function to start production environment
 prod_start() {
-    if [ ! -f .env.production ]; then
-        print_error ".env.production file not found. Please create it before starting production."
+    if [ ! -f .env ]; then
+        print_error ".env file not found. Please create it before starting production."
         exit 1
     fi
     
     print_status "Starting PortPilot production environment..."
     
     # Start services
-    docker-compose -f docker-compose.prod.yml --env-file .env.production up -d
+    docker-compose -f docker-compose.prod.yml up -d
     
     print_success "PortPilot production environment is running!"
     print_status "Access the application at: https://portpilot.co.uk"
@@ -137,7 +137,7 @@ stop() {
 # Function to view logs
 logs() {
     if [ "$2" = "prod" ]; then
-        docker-compose -f docker-compose.prod.yml --env-file .env.production logs -f "${3:-}"
+        docker-compose -f docker-compose.prod.yml logs -f "${3:-}"
     elif [ "$2" = "prod-local" ]; then
         docker-compose -f docker-compose.prod.local.yml --env-file .env.production.local logs -f "${3:-}"
     else
