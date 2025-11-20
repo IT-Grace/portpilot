@@ -120,6 +120,18 @@ if [ $? -ne 0 ]; then
 fi
 print_success "Migrations completed successfully"
 
+# Step 7.5: Seed demo user
+print_header "🌱 Step 7.5: Seeding Demo User"
+print_info "Creating demo user and portfolio (if not exists)..."
+docker compose -f docker-compose.prod.yml run --rm migrator npm run seed
+
+if [ $? -ne 0 ]; then
+    print_warning "Seeding failed - this is non-critical, continuing deployment"
+    print_info "You can manually seed later: docker compose -f docker-compose.prod.yml run --rm migrator npm run seed"
+else
+    print_success "Demo user seeded successfully"
+fi
+
 # Step 8: Validate schema
 print_header "🔍 Step 8: Validating Database Schema"
 docker compose -f docker-compose.prod.yml run --rm migrator npx tsx scripts/validate-schema.ts

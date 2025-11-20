@@ -18,7 +18,7 @@ async function seed() {
     process.env.NODE_ENV === "production" ||
     process.env.DATABASE_URL?.includes("5434");
 
-  // Create admin users for production-local testing
+  // Create admin users for production-local testing ONLY
   if (isProdLocal) {
     console.log("\n👑 Creating admin users for production-local testing...");
 
@@ -80,6 +80,9 @@ async function seed() {
       console.log("ℹ️  admin-free user already exists");
     }
   }
+
+  // Create demo user for ALL environments (including production)
+  console.log("\n👤 Creating demo user...");
 
   // Check if demo user already exists
   let user = await db.query.users.findFirst({
