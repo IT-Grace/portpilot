@@ -75,11 +75,9 @@ print_success "Code updated to latest version"
 
 # Step 2: Preview migrations
 print_header "📋 Step 2: Migration Preview"
-print_info "Generating migration preview..."
-docker compose -f docker-compose.prod.yml run --rm migrator drizzle-kit generate
-
-print_info ""
-print_warning "Review the migration changes above"
+print_info "Checking for new migrations..."
+print_warning "Note: Migrations will be generated and applied automatically in Step 7"
+print_info "Current schema changes will be shown during migration execution"
 echo ""
 
 # Step 3: Confirm deployment
