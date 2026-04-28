@@ -35,6 +35,7 @@ interface DashboardData {
     homepage?: string;
     topics?: string[];
     selected?: boolean;
+    displayOrder?: number;
   }>;
 }
 
@@ -49,6 +50,39 @@ export function AppearanceTab() {
   const [selectedProjects, setSelectedProjects] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // Track initial state for detecting changes
+  const [initialState, setInitialState] = useState<{
+    theme: ThemeId;
+    color: string;
+    stats: boolean;
+    projectOrder: string[];
+  } | null>(null);
+
+  // Drag and drop state
+  const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
+
+  // Check if there are unsaved changes
+  const hasUnsavedChanges =
+    initialState !== null &&
+    (initialState.theme !== selectedTheme ||
+      initialState.color !== accentColor ||
+      initialState.stats !== showStats ||
+      JSON.stringify(initialState.projectOrder) !==
+        JSON.stringify(selectedProjects.map((p) => p.id)));
+
+  // Warn before leaving with unsaved changes
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (hasUnsavedChanges) {
+        e.preventDefault();
+        e.returnValue = "";
+      }
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [hasUnsavedChanges]);
+
   useEffect(() => {
     fetchData();
   }, []);
@@ -60,19 +94,26 @@ export function AppearanceTab() {
         credentials: "include",
       });
 
-      if (dashboardResponse.ok) {
-        const data = await dashboardResponse.json();
-        setDashboardData(data);
-
-        // Filter selected projects from server data
-        const selected = data.projects.filter((p: any) => p.selected === true);
-        console.log("Selected projects with analysis data:", selected);
-        setSelectedProjects(selected);
+      if (!dashboardResponse.ok) {
+        throw new Error("Failed to fetch dashboard data");
       }
 
-      // Fetch current portfolio settings
+      const data = await dashboardResponse.json();
+      setDashboardData(data);
+
+      // Filter selected projects and sort by displayOrder
+      const selected = data.projects
+        .filter((p: any) => p.selected === true)
+        .sort(
+          (a: any, b: any) => (a.displayOrder || 0) - (b.displayOrder || 0)
+        );
+
+      console.log("Selected projects with analysis data:", selected);
+      setSelectedProjects(selected);
+
+      // Fetch current portfolio settings using the handle from the fetched data
       const portfolioResponse = await fetch(
-        `/api/portfolio/${dashboardData?.user?.handle || "IT-Grace"}`,
+        `/api/portfolio/${data.user.handle}`,
         {
           credentials: "include",
         }
@@ -80,9 +121,30 @@ export function AppearanceTab() {
 
       if (portfolioResponse.ok) {
         const portfolioData = await portfolioResponse.json();
-        setSelectedTheme(portfolioData.layout?.themeId || "sleek");
-        setAccentColor(portfolioData.layout?.accentColor || "#3b82f6");
-        setShowStats(portfolioData.layout?.showStats !== false);
+        console.log("Fetched portfolio data:", portfolioData);
+
+        const theme = portfolioData.layout?.themeId || "sleek";
+        const color = portfolioData.layout?.accentColor || "#3b82f6";
+        const stats = portfolioData.layout?.showStats !== false;
+
+        console.log("Parsed values:", {
+          theme,
+          color,
+          stats,
+          rawShowStats: portfolioData.layout?.showStats,
+        });
+
+        setSelectedTheme(theme);
+        setAccentColor(color);
+        setShowStats(stats);
+
+        // Set initial state after fetching all data
+        setInitialState({
+          theme,
+          color,
+          stats,
+          projectOrder: selected.map((p: any) => p.id),
+        });
       }
     } catch (error) {
       console.error("Error fetching data:", error);
@@ -170,7 +232,8 @@ export function AppearanceTab() {
   const handleSave = async () => {
     setSaving(true);
     try {
-      const response = await fetch("/api/portfolio/theme", {
+      // Save theme settings
+      const themeResponse = await fetch("/api/portfolio/theme", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -183,16 +246,70 @@ export function AppearanceTab() {
         }),
       });
 
-      if (response.ok) {
-        console.log("Theme saved successfully");
-      } else {
-        console.error("Failed to save theme");
+      if (!themeResponse.ok) {
+        throw new Error("Failed to save theme");
       }
+
+      // Save project order
+      const projectOrders = selectedProjects.map((project, index) => ({
+        projectId: project.id,
+        order: index,
+      }));
+
+      const orderResponse = await fetch("/api/portfolio/order", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        credentials: "include",
+        body: JSON.stringify({ projectOrders }),
+      });
+
+      if (!orderResponse.ok) {
+        throw new Error("Failed to save project order");
+      }
+
+      // Update initial state to reflect saved changes
+      setInitialState({
+        theme: selectedTheme,
+        color: accentColor,
+        stats: showStats,
+        projectOrder: selectedProjects.map((p) => p.id),
+      });
+
+      console.log("Changes saved successfully");
     } catch (error) {
-      console.error("Error saving theme:", error);
+      console.error("Error saving changes:", error);
+      alert("Failed to save changes. Please try again.");
     } finally {
       setSaving(false);
     }
+  };
+
+  // Drag and drop handlers
+  const handleDragStart = (index: number) => {
+    setDraggedIndex(index);
+  };
+
+  const handleDragOver = (e: React.DragEvent, index: number) => {
+    e.preventDefault();
+
+    if (draggedIndex === null || draggedIndex === index) return;
+
+    const newProjects = [...selectedProjects];
+    const draggedProject = newProjects[draggedIndex];
+
+    // Remove from old position
+    newProjects.splice(draggedIndex, 1);
+    // Insert at new position
+    newProjects.splice(index, 0, draggedProject);
+
+    setSelectedProjects(newProjects);
+    setDraggedIndex(index);
+  };
+
+  const handleDragEnd = () => {
+    setDraggedIndex(null);
   };
 
   if (loading) {
@@ -386,18 +503,24 @@ export function AppearanceTab() {
               selectedProjects.map((project, index) => (
                 <div
                   key={project.id}
-                  className="flex items-center gap-4 p-4 rounded-lg border border-border bg-card hover-elevate transition-all cursor-move"
+                  draggable
+                  onDragStart={() => handleDragStart(index)}
+                  onDragOver={(e) => handleDragOver(e, index)}
+                  onDragEnd={handleDragEnd}
+                  className={`flex items-center gap-4 p-4 rounded-lg border border-border bg-card hover-elevate transition-all cursor-move ${
+                    draggedIndex === index ? "opacity-50" : ""
+                  }`}
                   data-testid={`project-order-${index}`}
                 >
-                  <GripVertical className="h-5 w-5 text-muted-foreground" />
-                  <div className="flex-1">
-                    <p className="font-medium">{project.name}</p>
-                    <p className="text-sm text-muted-foreground">
+                  <GripVertical className="h-5 w-5 text-muted-foreground flex-shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium truncate">{project.name}</p>
+                    <p className="text-sm text-muted-foreground truncate">
                       {project.description ||
                         `A ${project.language || "code"} project`}
                     </p>
                   </div>
-                  <div className="text-sm text-muted-foreground">
+                  <div className="text-sm text-muted-foreground flex-shrink-0">
                     Position {index + 1}
                   </div>
                 </div>
@@ -443,17 +566,45 @@ export function AppearanceTab() {
         </CardContent>
       </Card>
 
-      {/* Save Button */}
-      <div className="flex justify-end">
-        <Button
-          size="lg"
-          onClick={handleSave}
-          disabled={saving}
-          data-testid="button-save-appearance"
-        >
-          {saving ? "Saving..." : "Save Changes"}
-        </Button>
-      </div>
+      {/* Save Button - Only show when there are unsaved changes */}
+      {hasUnsavedChanges && (
+        <div className="flex justify-between items-center sticky bottom-0 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-t pt-6">
+          <p className="text-sm text-muted-foreground">
+            You have unsaved changes
+          </p>
+          <div className="flex gap-3">
+            <Button
+              variant="outline"
+              size="lg"
+              onClick={() => {
+                // Reset to initial state
+                if (initialState) {
+                  setSelectedTheme(initialState.theme);
+                  setAccentColor(initialState.color);
+                  setShowStats(initialState.stats);
+                  // Reset project order
+                  const reordered = [...selectedProjects].sort((a, b) => {
+                    const aIndex = initialState.projectOrder.indexOf(a.id);
+                    const bIndex = initialState.projectOrder.indexOf(b.id);
+                    return aIndex - bIndex;
+                  });
+                  setSelectedProjects(reordered);
+                }
+              }}
+            >
+              Discard Changes
+            </Button>
+            <Button
+              size="lg"
+              onClick={handleSave}
+              disabled={saving}
+              data-testid="button-save-appearance"
+            >
+              {saving ? "Saving..." : "Save Changes"}
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

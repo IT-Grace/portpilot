@@ -802,17 +802,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const userId = (req.user as any).id;
-      const { themeId, accentColor } = req.body;
+      const { themeId, accentColor, showStats } = req.body;
+
+      console.log("Received request body:", req.body);
+      console.log("Extracted values:", {
+        themeId,
+        accentColor,
+        showStats,
+        typeofShowStats: typeof showStats,
+      });
 
       const portfolio = await storage.getPortfolio(userId);
       if (!portfolio) {
         return res.status(404).json({ error: "Portfolio not found" });
       }
 
+      console.log("Current portfolio before update:", portfolio);
+
       const updated = await storage.updatePortfolio(portfolio.id, {
         themeId,
         accentColor,
+        showStats,
       });
+
+      console.log("Updated portfolio after update:", updated);
 
       res.json(updated);
     } catch (error: any) {
@@ -1038,8 +1051,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
           user = await storage.getUser(user.id);
         }
 
+        if (!user) {
+          return res
+            .status(500)
+            .json({ error: "Failed to retrieve user data" });
+        }
+
         // Log the user in
-        console.log(`Attempting to log in user: ${user!.handle}`);
+        console.log(`Attempting to log in user: ${user.handle}`);
         req.login(user, (err) => {
           if (err) {
             console.error("Login error:", err);
@@ -1048,9 +1067,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               .json({ error: "Login failed", details: err.message });
           }
           console.log(
-            `Successfully logged in user: ${user!.handle} (${user!.plan}, ${
-              user!.role
-            })`
+            `Successfully logged in user: ${user.handle} (${user.plan}, ${user.role})`
           );
           res.json({
             success: true,
