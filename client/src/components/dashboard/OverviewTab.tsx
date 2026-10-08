@@ -1,3 +1,4 @@
+import { planLimits } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -111,7 +112,7 @@ export function OverviewTab() {
           <CardContent>
             <div className="text-3xl font-bold">{stats.totalProjects}</div>
             <p className="text-xs text-muted-foreground mt-1">
-              {stats.isPro ? "of 30" : "of 6"} used
+              of {planLimits[stats.isPro ? "PRO" : "FREE"].maxProjects} used
             </p>
           </CardContent>
         </Card>

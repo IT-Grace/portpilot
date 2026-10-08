@@ -8,24 +8,44 @@ import { ProjectAnalyzer } from "./services/projectAnalyzer";
 import { storage } from "./storage";
 import { deleteFile, getFileUrl, imageUpload } from "./utils/fileUpload";
 
-// GitHub API function to fetch repositories
-async function fetchGitHubRepositories(accessToken: string): Promise<any[]> {
-  const response = await fetch(
-    "https://api.github.com/user/repos?type=owner&sort=updated&per_page=50",
-    {
-      headers: {
-        Authorization: `token ${accessToken}`,
-        "User-Agent": "PortPilot/1.0",
-        Accept: "application/vnd.github.v3+json",
-      },
-    }
-  );
+// GitHub API function to fetch repositories.
+// Pages through every repo the user owns or can see via their orgs. Throws if
+// any page fails, so callers can rely on the result being the complete list.
+const GITHUB_REPOS_PER_PAGE = 100;
+const GITHUB_MAX_PAGES = 20; // 2,000 repos - guards against runaway paging
 
-  if (!response.ok) {
-    throw new Error(`GitHub API error: ${response.status}`);
+async function fetchGitHubRepositories(accessToken: string): Promise<any[]> {
+  const repos: any[] = [];
+
+  for (let page = 1; page <= GITHUB_MAX_PAGES; page++) {
+    const response = await fetch(
+      `https://api.github.com/user/repos?affiliation=owner,organization_member&sort=updated&per_page=${GITHUB_REPOS_PER_PAGE}&page=${page}`,
+      {
+        headers: {
+          Authorization: `token ${accessToken}`,
+          "User-Agent": "PortPilot/1.0",
+          Accept: "application/vnd.github.v3+json",
+        },
+      }
+    );
+
+    if (!response.ok) {
+      throw new Error(`GitHub API error: ${response.status}`);
+    }
+
+    const pageRepos = await response.json();
+    repos.push(...pageRepos);
+
+    if (pageRepos.length < GITHUB_REPOS_PER_PAGE) {
+      return repos;
+    }
   }
 
-  return await response.json();
+  throw new Error(
+    `GitHub returned more than ${
+      GITHUB_REPOS_PER_PAGE * GITHUB_MAX_PAGES
+    } repositories; sync aborted`
+  );
 }
 
 export async function registerRoutes(app: Express): Promise<Server> {
@@ -323,20 +343,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
       let removedCount = 0;
       const existingProjects = await storage.getProjects(portfolio.id);
 
-      // Create a set of current GitHub repo URLs for efficient lookup
-      const currentRepoUrls = new Set(repos.map((repo) => repo.html_url));
+      // Match projects to repos by GitHub's stable repo ID (survives renames),
+      // falling back to URL for projects created before repoId was reliable.
+      const findRepoForProject = (project: (typeof existingProjects)[number]) =>
+        repos.find(
+          (repo) =>
+            (project.repoId && project.repoId === repo.id.toString()) ||
+            project.repoUrl === repo.html_url
+        );
 
-      // Remove projects that no longer exist on GitHub
-      for (const project of existingProjects) {
-        if (project.repoUrl && !currentRepoUrls.has(project.repoUrl)) {
-          try {
-            await storage.deleteProject(project.id);
-            removedCount++;
-            console.log(
-              `Removed project ${project.name} (no longer exists on GitHub)`
-            );
-          } catch (error) {
-            console.error(`Error removing project ${project.name}:`, error);
+      // Remove projects whose repos are gone. fetchGitHubRepositories throws
+      // unless it got the complete list, but an empty list most likely means a
+      // token/scope problem rather than every repo being deleted - skip then.
+      if (repos.length > 0) {
+        for (const project of existingProjects) {
+          if (project.repoUrl && !findRepoForProject(project)) {
+            try {
+              await storage.deleteProject(project.id);
+              for (const image of (project.images || []) as {
+                filename?: string;
+              }[]) {
+                if (image.filename) {
+                  deleteFile(image.filename);
+                }
+              }
+              removedCount++;
+              console.log(
+                `Removed project ${project.name} (no longer exists on GitHub)`
+              );
+            } catch (error) {
+              console.error(`Error removing project ${project.name}:`, error);
+            }
           }
         }
       }
@@ -348,11 +385,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         try {
           // Check if project already exists
           const existingProject = updatedExistingProjects.find(
-            (p) => p.repoUrl === repo.html_url
+            (p) =>
+              (p.repoId && p.repoId === repo.id.toString()) ||
+              p.repoUrl === repo.html_url
           );
 
           if (!existingProject) {
-            // Create new project
+            // Create new project. Private repos start unselected so they are
+            // never published to the public portfolio without the user opting in.
             await storage.createProject({
               portfolioId: portfolio.id,
               repoId: repo.id.toString(),
@@ -370,6 +410,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               images: [],
               lastUpdated: new Date(repo.updated_at),
               analyzed: false,
+              selected: !repo.private,
             });
             syncedCount++;
           } else {
@@ -384,13 +425,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
             const hasMetadataUpdates =
               existingProject.stars !== repo.stargazers_count ||
               existingProject.forks !== repo.forks_count ||
-              existingProject.description !== repo.description;
+              existingProject.description !== repo.description ||
+              existingProject.repoUrl !== repo.html_url;
 
             if (hasContentUpdates || hasMetadataUpdates) {
               const updateData: any = {
+                repoId: repo.id.toString(),
+                repoUrl: repo.html_url,
                 name: repo.name,
                 description: repo.description,
-                summary: repo.description || existingProject.summary,
                 homepage: repo.homepage,
                 stars: repo.stargazers_count,
                 forks: repo.forks_count,
@@ -400,6 +443,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 topics: repo.topics || [],
                 lastUpdated: repoLastUpdated,
               };
+
+              // Keep AI-generated summaries; only un-analyzed projects track
+              // the GitHub description.
+              if (!existingProject.analyzed) {
+                updateData.summary =
+                  repo.description || existingProject.summary;
+              }
 
               // If repo content was updated (not just metadata), mark as needing re-analysis
               if (hasContentUpdates) {
@@ -437,6 +487,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
     } catch (error: any) {
       console.error("Error syncing repositories:", error);
+      if (error.message === "GitHub API error: 401") {
+        return res.status(401).json({
+          error:
+            "Your GitHub connection has expired. Please sign in with GitHub again.",
+        });
+      }
       res.status(500).json({ error: "Failed to sync repositories" });
     }
   });
@@ -951,7 +1007,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Stripe Billing - Create checkout session
   app.post("/api/billing/checkout", async (req, res) => {
     // TODO: Implement Stripe Checkout
-    res.json({ url: "https://checkout.stripe.com/placeholder" });
+    res.status(501).json({ error: "Billing is not available yet" });
   });
 
   // Development Login Endpoints (only in development)

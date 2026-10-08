@@ -1,6 +1,7 @@
 import { relations, sql } from "drizzle-orm";
 import {
   boolean,
+  index,
   integer,
   json,
   pgEnum,
@@ -196,6 +197,18 @@ export const verificationTokens = pgTable(
   })
 );
 
+// Login sessions, managed by connect-pg-simple (express-session store).
+// Column names and types must match what connect-pg-simple expects.
+export const userSessions = pgTable(
+  "user_sessions",
+  {
+    sid: varchar("sid").primaryKey(),
+    sess: json("sess").notNull(),
+    expire: timestamp("expire", { precision: 6 }).notNull(),
+  },
+  (table) => [index("IDX_user_sessions_expire").on(table.expire)]
+);
+
 // Relations
 export const usersRelations = relations(users, ({ one, many }) => ({
   portfolio: one(portfolios, {
@@ -359,6 +372,14 @@ export type PortfolioModel = {
     accentColor?: string | null;
     showStats: boolean;
   };
+};
+
+// Plan configuration
+export type Plan = (typeof planEnum.enumValues)[number];
+
+export const planLimits: Record<Plan, { maxProjects: number }> = {
+  FREE: { maxProjects: 6 },
+  PRO: { maxProjects: 30 },
 };
 
 // Theme configuration

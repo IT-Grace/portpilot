@@ -1,15 +1,21 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { useToast } from "@/hooks/use-toast";
+import { planLimits, type Plan } from "@shared/schema";
 import { Check, Crown, ExternalLink } from "lucide-react";
 
-export function BillingTab() {
-  const currentPlan = "FREE"; // TODO: Get from context
+interface BillingTabProps {
+  plan: Plan;
+}
+
+export function BillingTab({ plan }: BillingTabProps) {
+  const currentPlan = plan;
   const isPro = currentPlan === "PRO";
 
   const features = {
     free: [
-      "Up to 6 projects",
+      `Up to ${planLimits.FREE.maxProjects} projects`,
       "2 themes (Sleek, CardGrid)",
       "Public portfolio URL",
       "GitHub sync",
@@ -17,7 +23,7 @@ export function BillingTab() {
       "Basic statistics",
     ],
     pro: [
-      "Up to 30 projects",
+      `Up to ${planLimits.PRO.maxProjects} projects`,
       "All 4 themes",
       "Custom domain",
       "Priority sync",
@@ -27,14 +33,23 @@ export function BillingTab() {
     ],
   };
 
+  const { toast } = useToast();
+
+  // TODO: Replace with Stripe Checkout / Customer Portal once live keys exist
   const handleUpgrade = () => {
-    // TODO: Redirect to Stripe Checkout
-    window.location.href = "/api/billing/checkout";
+    toast({
+      title: "Pro upgrades are coming soon",
+      description:
+        "Online payments aren't available yet. We'll let you know as soon as you can upgrade.",
+    });
   };
 
   const handleManageSubscription = () => {
-    // TODO: Redirect to Stripe Customer Portal
-    window.location.href = "/api/billing/portal";
+    toast({
+      title: "Subscription management is coming soon",
+      description:
+        "Billing changes aren't available online yet. Please contact support for help with your plan.",
+    });
   };
 
   return (

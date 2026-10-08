@@ -16,6 +16,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { useToast } from "@/hooks/use-toast";
+import { planLimits, type Plan } from "@shared/schema";
 import { formatDistanceToNow } from "date-fns";
 import {
   Brain,
@@ -52,7 +54,11 @@ type Repo = {
   images?: Array<{ url: string; alt: string; filename?: string }>;
 };
 
-export function ReposTab() {
+interface ReposTabProps {
+  plan: Plan;
+}
+
+export function ReposTab({ plan }: ReposTabProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [sortBy, setSortBy] = useState("updated");
   const [languageFilter, setLanguageFilter] = useState("all");
@@ -60,6 +66,7 @@ export function ReposTab() {
   const [editingProject, setEditingProject] = useState<Repo | null>(null);
   const [repos, setRepos] = useState<Repo[]>([]);
   const [loading, setLoading] = useState(true);
+  const { toast } = useToast();
 
   useEffect(() => {
     fetchDashboardData();
@@ -133,7 +140,7 @@ export function ReposTab() {
 
   const lastSync = new Date(Date.now() - 1000 * 60 * 60 * 2);
   const selectedCount = repos.filter((r) => r.selected).length;
-  const maxProjects = 6; // TODO: Get from user plan
+  const { maxProjects } = planLimits[plan];
 
   // Helper function to check if a project needs re-analysis
   const needsReAnalysis = (repo: Repo) => {
@@ -191,15 +198,18 @@ export function ReposTab() {
             parts.push(`Removed ${removedCount} repositories`);
 
           const message = parts.join(", ") + ".";
-          if (updatedCount > 0) {
-            alert(
-              `Sync completed! ${message}\n\nNote: Updated repositories may need re-analysis to refresh AI-generated content.`
-            );
-          } else {
-            alert(`Sync completed! ${message}`);
-          }
+          toast({
+            title: "Sync completed",
+            description:
+              updatedCount > 0
+                ? `${message} Updated repositories may need re-analysis to refresh AI-generated content.`
+                : message,
+          });
         } else {
-          alert("Sync completed! All repositories are up to date.");
+          toast({
+            title: "Sync completed",
+            description: "All repositories are up to date.",
+          });
         }
 
         // Fetch updated data and merge with existing state
@@ -215,14 +225,21 @@ export function ReposTab() {
           setRepos(mergedRepos);
         }
       } else {
-        console.error("Sync failed:", response.statusText);
-        alert("Sync failed. Please try again.");
+        const errorData = await response.json().catch(() => ({}));
+        console.error("Sync failed:", response.status, errorData);
+        toast({
+          variant: "destructive",
+          title: "Sync failed",
+          description: errorData.error || "Please try again.",
+        });
       }
     } catch (error) {
       console.error("Error syncing repositories:", error);
-      alert(
-        "Error syncing repositories. Please check your connection and try again."
-      );
+      toast({
+        variant: "destructive",
+        title: "Sync failed",
+        description: "Please check your connection and try again.",
+      });
     } finally {
       setSyncing(false);
     }

@@ -23,6 +23,12 @@ export async function setupVite(app: Express, server: Server) {
     middlewareMode: true,
     hmr: { server },
     allowedHosts: true as const,
+    // Docker Desktop bind mounts don't forward file-change events, so the
+    // container opts into polling via CHOKIDAR_USEPOLLING.
+    watch:
+      process.env.CHOKIDAR_USEPOLLING === "true"
+        ? { usePolling: true, interval: 300 }
+        : undefined,
   };
 
   // Don't import vite.config.ts - let Vite find it automatically

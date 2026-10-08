@@ -15,6 +15,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import type { Plan } from "@shared/schema";
 import { Globe, LogOut, Shield, User } from "lucide-react";
 import { useEffect, useState } from "react";
 
@@ -24,7 +25,7 @@ interface CurrentUser {
   handle: string;
   email: string | null;
   avatarUrl: string | null;
-  plan: string;
+  plan: Plan;
   role?: string;
 }
 
@@ -244,7 +245,7 @@ export default function Dashboard() {
           </TabsContent>
 
           <TabsContent value="repos" className="space-y-6">
-            <ReposTab />
+            <ReposTab plan={user.plan} />
           </TabsContent>
 
           <TabsContent value="appearance" className="space-y-6">
@@ -252,7 +253,7 @@ export default function Dashboard() {
           </TabsContent>
 
           <TabsContent value="billing" className="space-y-6">
-            <BillingTab />
+            <BillingTab plan={user.plan} />
           </TabsContent>
 
           <TabsContent value="publishing" className="space-y-6">

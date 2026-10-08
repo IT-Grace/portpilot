@@ -53,7 +53,10 @@ passport.use(
       clientID: process.env.GITHUB_CLIENT_ID!,
       clientSecret: process.env.GITHUB_CLIENT_SECRET!,
       callbackURL: process.env.GITHUB_CALLBACK_URL!,
-      scope: ["user", "repo"],
+      // Read-only: public profile plus public repos (which need no scope).
+      // PortPilot never writes to GitHub; `user` and `repo` both grant write
+      // access, and `repo` has no read-only variant for private repos.
+      scope: ["read:user"],
     },
     async (
       accessToken: string,
@@ -125,7 +128,7 @@ passport.use(
               .set({
                 accessToken,
                 refreshToken: refreshToken || null,
-                scopes: "user,repo",
+                scopes: "read:user",
                 updatedAt: new Date(),
               })
               .where(eq(integrations.id, existingIntegration.id));
@@ -136,7 +139,7 @@ passport.use(
               provider: "github",
               accessToken,
               refreshToken: refreshToken || null,
-              scopes: "user,repo",
+              scopes: "read:user",
             });
           }
 
@@ -159,7 +162,7 @@ passport.use(
             provider: "github",
             accessToken,
             refreshToken: refreshToken || null,
-            scopes: "user",
+            scopes: "read:user",
           });
 
           return done(null, newUser);

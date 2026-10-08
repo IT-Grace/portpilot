@@ -1,11 +1,13 @@
 import dotenv from "dotenv";
 dotenv.config();
 
+import connectPgSimple from "connect-pg-simple";
 import express, { NextFunction, type Request, Response } from "express";
 import session from "express-session";
 import path from "path";
 import { fileURLToPath } from "url";
 import passport from "./auth";
+import { pool } from "./db";
 import { registerRoutes } from "./routes";
 
 const app = express();
@@ -13,9 +15,16 @@ app.set("env", process.env.NODE_ENV || "development");
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 
-// Session middleware
+// Session middleware. Sessions live in Postgres so restarts and redeploys
+// don't log everyone out.
+const PgSessionStore = connectPgSimple(session);
+
 app.use(
   session({
+    store: new PgSessionStore({
+      pool,
+      tableName: "user_sessions",
+    }),
     secret:
       process.env.SESSION_SECRET ||
       process.env.AUTH_SECRET ||

@@ -15,6 +15,13 @@
       "when": 1763647755590,
       "tag": "0001_moaning_squirrel_girl",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1791500687449,
+      "tag": "0002_add_user_sessions",
+      "breakpoints": true
     }
   ]
 }
