@@ -321,7 +321,11 @@ export function ReposTab({ plan }: ReposTabProps) {
           .json()
           .catch(() => ({ error: response.statusText }));
         console.error("Analysis failed:", errorData);
-        alert(`Analysis failed: ${errorData.error || response.statusText}`);
+        toast({
+          variant: "destructive",
+          title: "Analysis failed",
+          description: errorData.error || "Please try again.",
+        });
 
         // Remove loading state
         setRepos((prev) =>
@@ -330,11 +334,11 @@ export function ReposTab({ plan }: ReposTabProps) {
       }
     } catch (error) {
       console.error("Error analyzing project:", error);
-      alert(
-        `Error analyzing project: ${
-          error instanceof Error ? error.message : "Unknown error"
-        }`
-      );
+      toast({
+        variant: "destructive",
+        title: "Analysis failed",
+        description: "Please check your connection and try again.",
+      });
 
       // Remove loading state
       setRepos((prev) =>

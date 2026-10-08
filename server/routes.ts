@@ -562,75 +562,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
         accessToken
       );
 
-      // Perform AI analysis with fallback
+      // Perform AI analysis. On failure nothing is saved, so the project keeps
+      // its previous content instead of being overwritten with filler.
       let analysis;
       try {
         analysis = await analyzer.analyzeRepository(
           owner,
-          repo.replace(".git", "")
+          repo.replace(/\.git$/, "")
         );
       } catch (aiError) {
-        console.error("AI analysis failed, using fallback:", aiError);
-
-        // Fallback analysis if AI fails
-        analysis = {
-          summary: `${project.name} is a ${
-            project.description || "software project"
-          } that demonstrates modern development practices. This project showcases technical expertise and attention to detail in software development.`,
-          detailedDescription: `${project.name} represents a well-architected ${
-            project.description || "software solution"
-          } built with modern development practices and industry standards.\n\nThe project demonstrates strong technical implementation using ${
-            Object.keys(project.languages || {})[0] || "modern technologies"
-          } and follows established patterns for maintainable code. The architecture supports scalability and follows best practices for software development.\n\nWith ${
-            project.stars
-          } stars and ${
-            project.forks
-          } forks on GitHub, this project shows community engagement and demonstrates the developer's ability to create valuable, reusable software solutions. The codebase reflects attention to detail and professional development standards.\n\nThis project serves as an excellent example of modern software development practices and showcases technical capabilities in ${
-            Object.keys(project.languages || {})[0] || "software engineering"
-          }.`,
-          features: [
-            "Well-structured and maintainable codebase",
-            "Modern development practices and patterns",
-            project.description
-              ? "Comprehensive project documentation"
-              : "Professional development standards",
-            `Built with ${
-              Object.keys(project.languages || {})[0] || "modern technologies"
-            }`,
-            "Community engagement and open-source contribution",
-          ].slice(0, 5),
-          techStack: {
-            framework: Object.keys(project.languages || {})[0] || "JavaScript",
-            runtime: "Node.js",
-            packageManager: "npm",
-          },
-          projectType: "web-app" as const,
-          suggestedImages: [
-            {
-              type: "interface",
-              prompt: `A professional, clean interface for ${project.name} showing its main dashboard with modern UI elements, clean typography, and intuitive navigation`,
-            },
-            {
-              type: "screenshot",
-              prompt: `A detailed view of ${project.name} application interface showcasing key features and functionality with modern design patterns`,
-            },
-          ],
-          demoUrl: project.homepage || undefined,
-          keyInsights: [
-            `This project showcases expertise in ${
-              Object.keys(project.languages || {})[0] || "software development"
-            } and modern development practices`,
-            `Repository demonstrates professional code quality with ${project.stars} stars and active community engagement`,
-            `Architecture follows industry best practices for scalable and maintainable software solutions`,
-          ],
-        };
+        console.error("AI analysis failed:", aiError);
+        return res.status(502).json({
+          error:
+            "AI analysis couldn't be completed right now. Your project hasn't been changed - please try again in a moment.",
+        });
       }
 
       // Update project with analysis results (keeping existing manually uploaded images)
       const updatedProject = await storage.updateProject(projectId, {
         summary: analysis.summary,
         detailedDescription: analysis.detailedDescription,
-        features: (analysis as any).keyFeatures || analysis.features || [], // Handle both field names
+        features: analysis.features,
         stack: analysis.techStack,
         lastAnalyzed: new Date(),
         analyzed: true,

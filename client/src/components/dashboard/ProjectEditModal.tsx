@@ -10,6 +10,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import { useToast } from "@/hooks/use-toast";
 import { Code, Save, Sparkles, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import ImageUpload from "./ImageUpload";
@@ -28,6 +29,7 @@ export default function ProjectEditModal({
   onUpdate,
 }: ProjectEditModalProps) {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const { toast } = useToast();
   const [isSaving, setIsSaving] = useState(false);
   const [formData, setFormData] = useState({
     name: "",
@@ -84,7 +86,8 @@ export default function ProjectEditModal({
       });
 
       if (!response.ok) {
-        throw new Error("Failed to analyze project");
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || "Please try again.");
       }
 
       const data = await response.json();
@@ -100,7 +103,12 @@ export default function ProjectEditModal({
       }
     } catch (error) {
       console.error("Error analyzing project:", error);
-      alert("Failed to analyze project. Please try again.");
+      toast({
+        variant: "destructive",
+        title: "Analysis failed",
+        description:
+          error instanceof Error ? error.message : "Please try again.",
+      });
     } finally {
       setIsAnalyzing(false);
     }
