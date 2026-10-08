@@ -192,7 +192,7 @@ export class DatabaseStorage implements IStorage {
       .select()
       .from(projects)
       .where(eq(projects.portfolioId, portfolioId))
-      .orderBy(projects.order);
+      .orderBy(projects.order, desc(projects.lastUpdated));
   }
 
   async getProject(id: string): Promise<Project | undefined> {

@@ -254,9 +254,14 @@ export function ReposTab({ plan }: ReposTabProps) {
       prev.map((r) => (r.id === id ? { ...r, selected: newSelected } : r))
     );
 
+    const revert = () =>
+      setRepos((prev) =>
+        prev.map((r) => (r.id === id ? { ...r, selected: !newSelected } : r))
+      );
+
     // Update selection on server
     try {
-      await fetch("/api/portfolio/projects/selection", {
+      const response = await fetch("/api/portfolio/projects/selection", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -267,12 +272,24 @@ export function ReposTab({ plan }: ReposTabProps) {
           selected: newSelected,
         }),
       });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        revert();
+        toast({
+          variant: "destructive",
+          title: "Couldn't update selection",
+          description: errorData.error || "Please try again.",
+        });
+      }
     } catch (error) {
       console.error("Error updating project selection:", error);
-      // Revert on error
-      setRepos((prev) =>
-        prev.map((r) => (r.id === id ? { ...r, selected: !newSelected } : r))
-      );
+      revert();
+      toast({
+        variant: "destructive",
+        title: "Couldn't update selection",
+        description: "Please check your connection and try again.",
+      });
     }
   };
 

@@ -112,7 +112,8 @@ app.get("/api/auth/signout", (req, res) => {
 
 app.get("/api/auth/session", (req, res) => {
   if (req.user) {
-    res.json({ user: req.user });
+    const { id, handle, name, email, role, plan } = req.user as any;
+    res.json({ user: { id, handle, name, email, role, plan } });
   } else {
     res.status(401).json({ error: "Not authenticated" });
   }

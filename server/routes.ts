@@ -1,3 +1,4 @@
+import { planLimits, themes } from "@shared/schema";
 import type { Express } from "express";
 import express from "express";
 import { createServer, type Server } from "http";
@@ -245,9 +246,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
           .json({ error: "Portfolio not found or not public" });
       }
 
-      // Get projects (only selected ones for public portfolio)
+      // Get projects (only selected ones for public portfolio), capped at the
+      // owner's plan limit so e.g. a downgraded account shows its first N.
       const allProjects = await storage.getProjects(portfolio.id);
-      const selectedProjects = allProjects.filter((p) => p.selected === true);
+      const selectedProjects = allProjects
+        .filter((p) => p.selected === true)
+        .slice(0, planLimits[user.plan].maxProjects);
+
+      // Pro themes fall back to the default theme for Free accounts
+      const isProTheme = themes.some(
+        (t) => t.id === portfolio.themeId && t.isPro
+      );
+      const themeId =
+        isProTheme && user.plan !== "PRO" ? "sleek" : portfolio.themeId;
 
       // Build portfolio model
       const portfolioModel = {
@@ -278,7 +289,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         })),
         social: portfolio.social || {},
         layout: {
-          themeId: portfolio.themeId,
+          themeId,
           accentColor: portfolio.accentColor,
           showStats: portfolio.showStats,
         },
@@ -381,6 +392,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Refresh existing projects list after removals
       const updatedExistingProjects = await storage.getProjects(portfolio.id);
 
+      // New public repos start selected only while there's room in the plan
+      const syncUser = await storage.getUser(userId);
+      const { maxProjects } = planLimits[syncUser?.plan ?? "FREE"];
+      let selectedCount = updatedExistingProjects.filter(
+        (p) => p.selected
+      ).length;
+
       for (const repo of repos) {
         try {
           // Check if project already exists
@@ -393,6 +411,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           if (!existingProject) {
             // Create new project. Private repos start unselected so they are
             // never published to the public portfolio without the user opting in.
+            const selected = !repo.private && selectedCount < maxProjects;
+            if (selected) selectedCount++;
             await storage.createProject({
               portfolioId: portfolio.id,
               repoId: repo.id.toString(),
@@ -410,7 +430,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               images: [],
               lastUpdated: new Date(repo.updated_at),
               analyzed: false,
-              selected: !repo.private,
+              selected,
             });
             syncedCount++;
           } else {
@@ -780,20 +800,40 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const userId = (req.user as any).id;
       const { projectId, selected } = req.body;
 
+      if (typeof selected !== "boolean") {
+        return res.status(400).json({ error: "selected must be a boolean" });
+      }
+
       // Get user's portfolio to verify ownership
       const portfolio = await storage.getPortfolio(userId);
       if (!portfolio) {
         return res.status(404).json({ error: "Portfolio not found" });
       }
 
-      // Update the project's selected status
-      const updatedProject = await storage.updateProject(projectId, {
-        selected: selected,
-      });
-
-      if (!updatedProject) {
+      const portfolioProjects = await storage.getProjects(portfolio.id);
+      const project = portfolioProjects.find((p) => p.id === projectId);
+      if (!project) {
         return res.status(404).json({ error: "Project not found" });
       }
+
+      // Enforce the plan's project limit when adding to the portfolio
+      if (selected && !project.selected) {
+        const user = await storage.getUser(userId);
+        const { maxProjects } = planLimits[user?.plan ?? "FREE"];
+        const selectedCount = portfolioProjects.filter((p) => p.selected).length;
+        if (selectedCount >= maxProjects) {
+          return res.status(403).json({
+            error: `Your plan allows up to ${maxProjects} projects in your portfolio. Deselect another project first${
+              user?.plan === "PRO" ? "" : ", or upgrade to Pro"
+            }.`,
+          });
+        }
+      }
+
+      // Update the project's selected status
+      const updatedProject = await storage.updateProject(projectId, {
+        selected,
+      });
 
       res.json({ success: true, project: updatedProject });
     } catch (error: any) {
@@ -812,28 +852,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const userId = (req.user as any).id;
       const { themeId, accentColor, showStats } = req.body;
 
-      console.log("Received request body:", req.body);
-      console.log("Extracted values:", {
-        themeId,
-        accentColor,
-        showStats,
-        typeofShowStats: typeof showStats,
-      });
+      if (themeId !== undefined) {
+        const theme = themes.find((t) => t.id === themeId);
+        if (!theme) {
+          return res.status(400).json({ error: "Unknown theme" });
+        }
+        if (theme.isPro) {
+          const user = await storage.getUser(userId);
+          if (user?.plan !== "PRO") {
+            return res.status(403).json({
+              error: `The ${theme.name} theme is available on the Pro plan.`,
+            });
+          }
+        }
+      }
 
       const portfolio = await storage.getPortfolio(userId);
       if (!portfolio) {
         return res.status(404).json({ error: "Portfolio not found" });
       }
 
-      console.log("Current portfolio before update:", portfolio);
-
       const updated = await storage.updatePortfolio(portfolio.id, {
         themeId,
         accentColor,
         showStats,
       });
-
-      console.log("Updated portfolio after update:", updated);
 
       res.json(updated);
     } catch (error: any) {
@@ -845,7 +888,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Portfolio Management - Update project order
   app.post("/api/portfolio/order", async (req, res) => {
     try {
+      if (!req.user) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+
       const { projectOrders } = req.body; // Array of { projectId, order }
+      if (!Array.isArray(projectOrders)) {
+        return res.status(400).json({ error: "projectOrders must be an array" });
+      }
+
+      const portfolio = await storage.getPortfolio((req.user as any).id);
+      if (!portfolio) {
+        return res.status(404).json({ error: "Portfolio not found" });
+      }
+
+      // Only allow reordering projects in the user's own portfolio
+      const ownedIds = new Set(
+        (await storage.getProjects(portfolio.id)).map((p) => p.id)
+      );
+      if (
+        projectOrders.some(
+          ({ projectId, order }) =>
+            !ownedIds.has(projectId) || !Number.isInteger(order)
+        )
+      ) {
+        return res.status(403).json({ error: "Access denied" });
+      }
 
       for (const { projectId, order } of projectOrders) {
         await storage.updateProjectOrder(projectId, order);

@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { useToast } from "@/hooks/use-toast";
 import { themes, type PortfolioModel, type ThemeId } from "@shared/schema";
 import { Check, Crown, Eye, GripVertical } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -40,6 +41,7 @@ interface DashboardData {
 }
 
 export function AppearanceTab() {
+  const { toast } = useToast();
   const [selectedTheme, setSelectedTheme] = useState<ThemeId>("sleek");
   const [accentColor, setAccentColor] = useState("#3b82f6");
   const [showStats, setShowStats] = useState(true);
@@ -247,7 +249,8 @@ export function AppearanceTab() {
       });
 
       if (!themeResponse.ok) {
-        throw new Error("Failed to save theme");
+        const errorData = await themeResponse.json().catch(() => ({}));
+        throw new Error(errorData.error || "Failed to save theme");
       }
 
       // Save project order
@@ -266,7 +269,8 @@ export function AppearanceTab() {
       });
 
       if (!orderResponse.ok) {
-        throw new Error("Failed to save project order");
+        const errorData = await orderResponse.json().catch(() => ({}));
+        throw new Error(errorData.error || "Failed to save project order");
       }
 
       // Update initial state to reflect saved changes
@@ -280,7 +284,12 @@ export function AppearanceTab() {
       console.log("Changes saved successfully");
     } catch (error) {
       console.error("Error saving changes:", error);
-      alert("Failed to save changes. Please try again.");
+      toast({
+        variant: "destructive",
+        title: "Couldn't save changes",
+        description:
+          error instanceof Error ? error.message : "Please try again.",
+      });
     } finally {
       setSaving(false);
     }
