@@ -1,372 +1,207 @@
 # PortPilot 🚀
 
-Auto-generate beautiful developer portfolio sites from your GitHub repositories with AI-powered project analysis.
+Auto-generate developer portfolio sites from your GitHub repositories, with AI-written project descriptions.
+
+Sign in with GitHub, pick the repos you want to show, optionally let AI write them up, choose a theme, and share your portfolio at `/u/<your-github-handle>`.
 
 ## ✨ Features
 
-### 🔐 **Authentication & Security**
+### 🔐 Sign-in
 
-- GitHub OAuth integration with comprehensive repository access
-- Secure session management with Express sessions
-- User profile synchronization from GitHub
+- GitHub OAuth sign-in with **read-only** access (`read:user` scope) — PortPilot never writes to GitHub
+- Sessions stored in PostgreSQL, so restarts and redeploys don't sign people out
+- Optional username/password login for admin and local production testing
 
-### 🤖 **AI-Powered Project Analysis**
+### 📦 GitHub repository sync
 
-- **OpenAI GPT-4 Integration** - Automatically generates detailed project descriptions
-- **Smart Feature Extraction** - AI identifies key features and capabilities
-- **Technology Stack Analysis** - Intelligent detection of frameworks and libraries
-- **Professional Insights** - AI-generated key insights and project highlights
-- **Re-analysis Detection** - Smart detection when projects need fresh AI analysis after updates
+- Imports all of your public repositories, including public repos in your organisations
+- Updates stars, forks, descriptions, languages and topics on each sync, and handles renamed repos
+- Removes projects whose repositories have been deleted
+- Choose which projects appear on your portfolio and drag to reorder them
 
-### 📦 **GitHub Repository Management**
+### 🤖 AI project analysis (OpenAI)
 
-- **Automatic Repository Sync** - Import and update projects from GitHub
-- **Smart Repository Detection** - Handles repository creation, updates, and removal
-- **Metadata Extraction** - Stars, forks, languages, topics, and homepage links
-- **Repository Filtering** - Select which repositories to showcase
-- **Update Tracking** - Detects when repositories have been modified
+- Generates a summary, detailed description, feature list and tech stack for a project
+- Reads the README, file structure and dependency manifests (`package.json`, `requirements.txt`, `go.mod`, `Cargo.toml`, `pom.xml`, …)
+- Grounded in the repository's contents — no invented features or demo links
+- If analysis fails, nothing is saved and the user sees a clear error
+- Flags projects that have changed since they were last analysed
 
-### 🎨 **Professional Themes**
+### 🎨 Themes
 
-- **4 Premium Themes**: Sleek (free), CardGrid (free), Terminal (pro), MagazineTheme (pro)
-- **Live Theme Preview** - Real-time theme switching in the dashboard
-- **Custom Accent Colors** - Personalize your portfolio appearance
-- **Responsive Design** - Mobile-first approach with perfect cross-device compatibility
+| Theme | Plan | Style |
+|---|---|---|
+| Sleek | Free | Hero section with project cards |
+| CardGrid | Free | Masonry layout with hover details |
+| Terminal | Pro | Command-line aesthetic with typing animation |
+| Magazine | Pro | Editorial layout with large images |
 
-### 🖼️ **Advanced Media Management**
+Accent colours, optional stats, live preview in the dashboard, and a `/u/<handle>/<theme>` URL to preview any theme.
 
-- **Manual Gallery System** - Upload and manage project images
-- **Professional Gallery UI** - Lightbox with hover slideshow effects
-- **Image Optimization** - Automatic file validation and cleanup
-- **Click-to-View Details** - Interactive image galleries with project modals
+### 🌐 Portfolio pages
 
-### 💳 **Subscription & Billing**
+- Public URL per user, with per-page titles and Open Graph/Twitter tags so shared links show your name, bio and avatar
+- Project image galleries (uploads up to 5MB)
+- Portfolio view counter
+- Social links (GitHub, X, LinkedIn, website)
 
-- **Stripe Integration** - Secure payment processing
-- **Free & Pro Plans** - Tiered feature access
-- **Webhook Handling** - Real-time subscription status updates
-- **Plan Limitations** - Automatic enforcement of project and theme limits
+### 🛡️ Admin
 
-### 🌐 **Portfolio Features**
+- `/admin` for users with the `admin` role: user list, plan changes, suspend/unsuspend, delete, and an audit log of admin actions
+- Suspended users are signed out immediately and their portfolios are hidden
 
-- **Public Portfolio URLs** - Clean, SEO-friendly portfolio pages
-- **Custom Domains** - Connect your own domain (Pro feature)
-- **Social Media Integration** - GitHub, X (Twitter), LinkedIn, and website links
-- **Portfolio Analytics** - View tracking and engagement metrics
-- **Project Showcase** - Highlight your best work with detailed descriptions
+## 💎 Plans
 
-## 🛠️ Tech Stack
+Limits are enforced on the server.
 
-### **Frontend**
+| | Free | Pro |
+|---|---|---|
+| Projects on portfolio | 6 | 30 |
+| Themes | Sleek, CardGrid | All 4 |
+| AI analysis | ✅ | ✅ |
+| Custom domain | — | Coming soon |
+| Payments (Stripe) | — | Coming soon — upgrade buttons show a notice; admins can change plans in `/admin` |
 
-- **React 18** - Modern React with hooks and TypeScript
-- **TypeScript** - Full type safety across the application
-- **Tailwind CSS** - Utility-first CSS framework with custom design system
-- **shadcn/ui** - High-quality, accessible component library
-- **Vite** - Lightning-fast build tool and development server
-- **wouter** - Minimalist client-side routing
-- **React Hook Form** - Performant forms with validation
-- **Zod** - TypeScript-first schema validation
+## 🛠️ Tech stack
 
-### **Backend**
+- **Frontend:** React 18, TypeScript, Vite, Tailwind CSS, shadcn/ui, wouter, TanStack Query
+- **Backend:** Express (one Node process serves the API and the client), Passport (GitHub OAuth + local), express-session with `connect-pg-simple`
+- **Data:** PostgreSQL with Drizzle ORM; `shared/schema.ts` is the single source of truth for tables and types
+- **Integrations:** GitHub REST API (Octokit), OpenAI (`gpt-5.4-mini` by default)
 
-- **Express.js** - Fast, minimalist web framework
-- **TypeScript** - Full-stack type safety
-- **Drizzle ORM** - Type-safe database operations with relations
-- **PostgreSQL** - Robust relational database
-- **Express Sessions** - Secure session management
-- **Passport.js** - GitHub OAuth authentication
-- **Multer** - File upload handling for images
-
-### **AI & External APIs**
-
-- **OpenAI GPT-4** - Advanced AI for project analysis and content generation
-- **GitHub API** - Repository data fetching and synchronization
-- **Stripe API** - Payment processing and subscription management
-
-### **Infrastructure**
-
-- **Session Storage** - PostgreSQL-backed session persistence
-- **File Storage** - Local file system with static serving
-- **Environment Configuration** - dotenv for secure configuration management
-
-## 🚀 Getting Started
+## 🚀 Getting started
 
 ### Prerequisites
 
-- **Node.js 20+** - Latest LTS version recommended
-- **PostgreSQL** - Local instance or cloud database (Neon, Supabase, etc.)
-- **GitHub OAuth App** - For repository access
-- **OpenAI API Key** - For AI-powered project analysis
-- **Stripe Account** - For payment processing (optional)
+- Node.js 20+
+- PostgreSQL 16 (or Docker)
+- A GitHub **OAuth App** (see below)
+- An OpenAI API key, for AI analysis
 
-### Installation & Setup
+### 1. Create a GitHub OAuth App
 
-1. **Clone the repository**
+At [GitHub → Settings → Developer settings → OAuth Apps](https://github.com/settings/developers) → **New OAuth App**:
 
-```bash
-npm install
-```
+- **Homepage URL:** `http://localhost:3000`
+- **Authorization callback URL:** `http://localhost:3000/api/auth/github/callback`
+- **Expire user access tokens:** leave **unchecked** (PortPilot doesn't refresh tokens yet)
 
-2. **Environment Configuration**
+Use a separate OAuth App per environment (dev, prod-local, production) — each only accepts its own callback URL.
 
-Copy the example environment file and configure all required variables:
+> Use an **OAuth App**, not a **GitHub App**. A GitHub App's sign-in only sees repositories where the app is installed.
+
+### 2. Configure environment variables
 
 ```bash
 cp .env.example .env
 ```
 
-3. **Database Setup**
+Fill in `SESSION_SECRET`, `DATABASE_URL`, the three `GITHUB_*` values and `OPENAI_API_KEY`. See [Environment variables](#environment-variables) below.
 
-Initialize your PostgreSQL database and run migrations:
-
-```bash
-npm run db:migrate
-```
-
-> **Note:** For schema development, see [MIGRATIONS.md](./MIGRATIONS.md) for the full migration workflow.
-
-4. **Seed Demo Data**
-
-Create demo user and sample projects:
+### 3. Run locally
 
 ```bash
-npm run seed
+npm install
+npm run db:migrate   # create tables
+npm run seed         # optional: demo user + projects at /u/demo
+npm run dev          # API + client with hot reload on http://localhost:3000
 ```
 
-5. **Start Development Server**
+### Or run with Docker
+
+The Docker Compose files are kept local (they're git-ignored), alongside the committed `Dockerfile`. With `docker-compose.yml` and a `.env.docker` (copied from `.env.example`) in place:
 
 ```bash
-npm run dev
+docker compose -p portpilot-dev up -d --build
 ```
 
-6. **View Demo Portfolio**
+This starts Postgres (host port 5433), Redis, the app on port 3000 with hot reload, and a one-shot migrator. Use the `-p portpilot-dev` project name every time: without it, the dev stack shares container and volume names with the prod-local stack and will take over its database.
 
-Visit http://localhost:3000/u/demo to see the demo portfolio in action.
+Note that Compose fills `${VAR}` references from the root `.env` file, and those take precedence over `.env.docker` — keep the `GITHUB_*` values in both files in sync.
 
-## ⚙️ Environment Variables
-
-### **Required Configuration**
-
-```env
-# Database
-DATABASE_URL="postgresql://user:password@localhost:5432/portpilot"
-
-# Authentication
-AUTH_SECRET="your-32-character-secret-key"
-GITHUB_ID="your-github-oauth-app-id"
-GITHUB_SECRET="your-github-oauth-app-secret"
-
-# AI Integration
-OPENAI_API_KEY="sk-your-openai-api-key"
-
-# Application
-NODE_ENV="development"
-PORT="3000"
-```
-
-### **Optional Integrations**
-
-```env
-# Stripe Payments
-VITE_STRIPE_PUBLIC_KEY="pk_test_..."
-STRIPE_SECRET_KEY="sk_test_..."
-STRIPE_WEBHOOK_SECRET="whsec_..."
-STRIPE_PRICE_ID="price_..."
-
-# Session Security
-SESSION_SECRET="your-session-encryption-secret"
-```
-
-## 🔧 API Integration Setup
-
-### **GitHub OAuth App**
-
-1. Navigate to [GitHub Settings > Developer Settings > OAuth Apps](https://github.com/settings/developers)
-2. Click "New OAuth App"
-3. Configure the application:
-   - **Application name**: PortPilot
-   - **Homepage URL**: `http://localhost:3000`
-   - **Authorization callback URL**: `http://localhost:3000/api/auth/github/callback`
-4. Copy the Client ID and Client Secret to your `.env` file
-
-### **OpenAI API Key**
-
-1. Visit [OpenAI Platform](https://platform.openai.com/api-keys)
-2. Create a new API key
-3. Add the key to your `.env` file as `OPENAI_API_KEY`
-4. Ensure you have sufficient credits for GPT-4 usage
-
-### **Stripe Configuration**
-
-1. Create a [Stripe account](https://dashboard.stripe.com/register)
-2. Get your API keys from the [Stripe Dashboard](https://dashboard.stripe.com/apikeys)
-3. Create a Pro plan product and price
-4. Set up webhook endpoint: `http://localhost:3000/api/billing/webhook`
-5. Configure webhook events: `customer.subscription.created`, `customer.subscription.updated`, `customer.subscription.deleted`
-
-## 📁 Project Structure
-
-```
-portpilot/
-├── client/                 # React frontend application
-│   ├── src/
-│   │   ├── components/     # Reusable UI components
-│   │   │   ├── dashboard/  # Dashboard-specific components
-│   │   │   ├── themes/     # Portfolio theme components
-│   │   │   └── ui/         # shadcn/ui components
-│   │   ├── contexts/       # React contexts (theme, etc.)
-│   │   ├── hooks/          # Custom React hooks
-│   │   ├── lib/            # Utilities and configurations
-│   │   └── pages/          # Page components
-│   ├── index.html          # HTML entry point
-│   └── vite.config.ts      # Vite configuration
-├── server/                 # Express.js backend
-│   ├── routes.ts           # API route definitions
-│   ├── storage.ts          # Database abstraction layer
-│   ├── auth.ts             # Passport.js configuration
-│   ├── db.ts               # Database connection
-│   ├── seed.ts             # Database seeding script
-│   └── index.ts            # Server entry point
-├── shared/                 # Shared TypeScript types
-│   └── schema.ts           # Drizzle ORM schema & types
-├── uploads/                # File upload storage
-└── attached_assets/        # Static assets
-```
-
-## 🎨 Theme System
-
-PortPilot features a sophisticated theme system with 4 professionally designed layouts:
-
-### **Free Themes**
-
-1. **SleekTheme** - Clean, modern design with hero sections and project cards
-2. **CardGridTheme** - Pinterest-style masonry layout with hover effects
-
-### **Pro Themes**
-
-3. **TerminalTheme** - Command-line aesthetic with typing animations
-4. **MagazineTheme** - Editorial layout with large hero images and typography focus
-
-Each theme is fully responsive and supports:
-
-- Custom accent colors
-- Dark/light mode compatibility
-- Social media integration
-- Project galleries and descriptions
-- Live preview in dashboard
-
-## 🤖 AI-Powered Features
-
-### **Project Analysis Engine**
-
-The AI system uses OpenAI's GPT-4 to analyze GitHub repositories and generate:
-
-- **Detailed Descriptions** - Professional project summaries
-- **Feature Lists** - Comprehensive capability breakdowns
-- **Technology Stack** - Framework and library identification
-- **Key Insights** - Strategic project highlights
-- **Professional Recommendations** - Improvement suggestions
-
-### **Smart Re-analysis**
-
-- **Change Detection** - Monitors repository updates
-- **Intelligent Triggers** - Suggests re-analysis when projects evolve
-- **Preserves User Data** - Maintains custom configurations during updates
-- **Warning System** - Visual indicators for outdated analysis
-
-## 💎 Subscription Plans
-
-### **Free Plan**
-
-- ✅ Up to 6 projects
-- ✅ 2 themes (Sleek, CardGrid)
-- ✅ GitHub synchronization
-- ✅ AI project analysis
-- ✅ Manual image galleries
-- ✅ Public portfolio URL
-
-### **Pro Plan** (£9/month)
-
-- ✅ Up to 30 projects
-- ✅ All 4 premium themes
-- ✅ Custom domain support
-- ✅ Advanced analytics
-- ✅ Priority AI analysis
-- ✅ Remove PortPilot branding
-- ✅ Priority support
-
-## 🚀 Deployment
-
-### **Development**
+To seed or promote a user inside the container:
 
 ```bash
-npm run dev
+docker exec portpilot-app-dev npm run seed
+docker exec portpilot-app-dev npm run make-admin <github-handle>
 ```
 
-### **Production Build**
+## Environment variables
+
+| Variable | Required | Purpose |
+|---|---|---|
+| `DATABASE_URL` | ✅ | PostgreSQL connection string |
+| `SESSION_SECRET` | ✅ | Signs session cookies — use a long random string |
+| `GITHUB_CLIENT_ID` | ✅ | GitHub OAuth App client ID |
+| `GITHUB_CLIENT_SECRET` | ✅ | GitHub OAuth App client secret |
+| `GITHUB_CALLBACK_URL` | ✅ | Must exactly match the OAuth App's callback URL |
+| `OPENAI_API_KEY` | For AI analysis | OpenAI key (must start with `sk-`) |
+| `OPENAI_MODEL` | — | Override the analysis model (default `gpt-5.4-mini`; must support JSON mode) |
+| `PORT` | — | Defaults to `3000` |
+| `NODE_ENV` | — | `development` enables Vite dev server and the dev login helper |
+| `POSTGRES_DB` / `POSTGRES_USER` / `POSTGRES_PASSWORD` | Docker only | Postgres container credentials |
+| `CHOKIDAR_USEPOLLING` | Docker only | `true` makes Vite poll for file changes (set by docker-compose) |
+
+Stripe variables (`STRIPE_*`, `VITE_STRIPE_PUBLIC_KEY`) are placeholders — billing isn't implemented yet.
+
+## 🔄 Scripts
 
 ```bash
-npm run build
-npm start
+npm run dev                 # dev server (API + Vite HMR)
+npm run build               # build client (dist/public) and server (dist/index.js)
+npm start                   # run the production build
+npm run check               # TypeScript type check
+
+npm run db:generate         # generate a migration from shared/schema.ts changes
+npm run db:migrate          # apply migrations, then verify critical columns
+npm run db:migrate:preview  # show pending migration SQL without applying
+npm run db:push             # push schema without a migration (dev only)
+
+npm run seed                # demo user + projects (/u/demo)
+npm run make-admin <handle> # give a user the admin role
 ```
 
-### **Docker Deployment**
+There's no test runner yet.
 
-```dockerfile
-FROM node:20-alpine
-WORKDIR /app
-COPY package*.json ./
-RUN npm ci --only=production
-COPY . .
-RUN npm run build
-EXPOSE 3000
-CMD ["npm", "start"]
+## 🗄️ Database & migrations
+
+1. Edit `shared/schema.ts`
+2. `npm run db:generate` — creates a SQL file in `drizzle/`. Rename it to describe its contents (e.g. `0003_add_portfolio_sync_and_views.sql`) and update its `tag` in `drizzle/meta/_journal.json` to match
+3. `npm run db:migrate:preview`, then `npm run db:migrate`
+4. Commit the SQL file, its snapshot and the journal
+
+Tables: `users`, `portfolios`, `projects`, `integrations` (GitHub tokens), `admin_actions` (audit log), `user_sessions`, plus some unused legacy tables.
+
+More detail: [docs/MIGRATIONS.md](docs/MIGRATIONS.md) and [docs/database-management.md](docs/database-management.md).
+
+## 📁 Project structure
+
+```
+client/src/
+  pages/                 Route components (Home, SignIn, Dashboard, Portfolio, Admin)
+  components/dashboard/  Dashboard tabs (Overview, Repos, Appearance, Billing, Publishing)
+  components/themes/     Portfolio themes
+  components/ui/         shadcn/ui components
+server/
+  index.ts               Entry point: sessions, Passport, GitHub OAuth routes
+  routes.ts              API routes
+  auth.ts                Passport strategies
+  storage.ts             Data access layer (routes use this, not db directly)
+  portfolioMeta.ts       Server-side meta tags for portfolio link previews
+  services/              AI project analyzer
+  vite-dev.ts            Dev-only Vite middleware (the only server file that imports vite)
+shared/schema.ts         Drizzle schema, insert schemas, shared types, plan limits, theme list
+drizzle/                 SQL migrations
 ```
 
-## 📊 Database Schema
+## 🚢 Deployment
 
-The application uses PostgreSQL with Drizzle ORM for type-safe database operations:
+See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) and [docs/DOCKER.md](docs/DOCKER.md). The production image (`Dockerfile`, `production` target) needs `node_modules`, `dist/`, `shared/` and `drizzle/` at runtime, and migrations should be run (with a backup first — see `scripts/backup.sh`) before starting a new version.
 
-- **users** - User accounts and GitHub profiles
-- **portfolios** - Portfolio configurations and themes
-- **projects** - Repository data and AI analysis results
-- **integrations** - Third-party service connections
+## 🗺️ Roadmap
 
-## 🔄 Available Scripts
-
-```bash
-npm run dev          # Start development server
-npm run build        # Build for production
-npm start            # Start production server
-npm run db:generate  # Generate migration files from schema
-npm run db:migrate   # Apply pending migrations to database
-npm run seed         # Seed database with demo data
-npm run type-check   # Run TypeScript type checking
-```
-
-> **Database Migrations:** See [MIGRATIONS.md](./MIGRATIONS.md) for comprehensive migration documentation.
-
-## 🤝 Contributing
-
-We welcome contributions! Please see our contributing guidelines:
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests if applicable
-5. Submit a pull request
-
-## 📄 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## 🆘 Support
-
-- **Documentation**: Check the inline code comments and TypeScript types
-- **Issues**: Report bugs via GitHub Issues
-- **Discussions**: Join our GitHub Discussions for questions and ideas
-
----
-
-Built with ❤️ using modern web technologies and AI to help developers showcase their work beautifully.
+- Stripe checkout and subscription management
+- Custom domains
+- Read-only access to private repositories (via a GitHub App)
+- Refresh support for expiring GitHub tokens
+- Tests
