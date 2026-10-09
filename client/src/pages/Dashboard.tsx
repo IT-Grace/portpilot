@@ -18,6 +18,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { Plan } from "@shared/schema";
 import { Globe, LogOut, Shield, User } from "lucide-react";
 import { useEffect, useState } from "react";
+import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 
 interface CurrentUser {
   id: string;
@@ -30,6 +31,7 @@ interface CurrentUser {
 }
 
 export default function Dashboard() {
+  useDocumentTitle("Dashboard");
   const [activeTab, setActiveTab] = useState("overview");
   const [user, setUser] = useState<CurrentUser | null>(null);
   const [loading, setLoading] = useState(true);

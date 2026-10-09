@@ -8,6 +8,7 @@ import type { PortfolioModel, ThemeId } from "@shared/schema";
 import { useQuery } from "@tanstack/react-query";
 import { Globe, Loader2 } from "lucide-react";
 import { useRoute } from "wouter";
+import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 
 export default function Portfolio() {
   const [, params] = useRoute("/u/:handle/:theme?");
@@ -29,6 +30,15 @@ export default function Portfolio() {
       return response.json();
     },
   });
+
+  // Title from the loaded portfolio; "not found" once the request fails
+  useDocumentTitle(
+    portfolioData
+      ? portfolioData.user.name || `@${portfolioData.user.handle}`
+      : error
+      ? "Portfolio not found"
+      : null
+  );
 
   if (isLoading) {
     return (

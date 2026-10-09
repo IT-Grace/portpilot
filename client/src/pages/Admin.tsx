@@ -28,8 +28,10 @@ import {
   Shield,
   Users,
 } from "lucide-react";
+import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 
 export default function Admin() {
+  useDocumentTitle("Admin");
   const { data: usersData, isLoading: usersLoading } = useAdminUsers();
   const { data: actionsData, isLoading: actionsLoading } = useAdminActions();
 

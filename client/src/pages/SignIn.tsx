@@ -17,8 +17,10 @@ import {
 import { ArrowLeft, Crown, Github, Globe, Shield, UserCog } from "lucide-react";
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
+import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 
 export default function SignIn() {
+  useDocumentTitle("Sign in");
   const [, navigate] = useLocation();
   const [isDevLoading, setIsDevLoading] = useState<string | null>(null);
   const [devRole, setDevRole] = useState<"user" | "moderator" | "admin">(

@@ -4,9 +4,11 @@ dotenv.config();
 import connectPgSimple from "connect-pg-simple";
 import express, { NextFunction, type Request, Response } from "express";
 import session from "express-session";
+import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import passport from "./auth";
+import { injectPortfolioMeta } from "./portfolioMeta";
 import { pool } from "./db";
 import { registerRoutes } from "./routes";
 
@@ -161,13 +163,20 @@ app.get("/api/auth/session", (req, res) => {
     app.use(express.static(publicDir));
 
     // Catch-all route for client-side routing
-    app.use("*", (req, res) => {
+    const indexPath = path.join(publicDir, "index.html");
+    app.use("*", async (req, res) => {
       // Skip API routes - they should have been handled already
       if (req.originalUrl.startsWith("/api/")) {
         return res.status(404).json({ error: "API endpoint not found" });
       }
 
-      const indexPath = path.join(publicDir, "index.html");
+      // Public portfolio pages get per-user title/Open Graph tags for link previews
+      if (req.originalUrl.startsWith("/u/")) {
+        const template = await fs.promises.readFile(indexPath, "utf-8");
+        const page = await injectPortfolioMeta(template, req);
+        return res.status(200).set({ "Content-Type": "text/html" }).end(page);
+      }
+
       res.sendFile(indexPath);
     });
   }
