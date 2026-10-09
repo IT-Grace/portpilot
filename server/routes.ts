@@ -1067,7 +1067,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
 
         const userRole =
-          role && ["user", "moderator", "admin"].includes(role) ? role : "user";
+          role && ["user", "admin"].includes(role) ? role : "user";
 
         let handle: string;
         let plan: "FREE" | "PRO";
@@ -1325,7 +1325,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { userId } = req.params;
       const { role } = req.body;
 
-      if (!["user", "moderator", "admin"].includes(role)) {
+      // "moderator" still exists in the DB enum but grants nothing, so it
+      // can't be assigned
+      if (!["user", "admin"].includes(role)) {
         return res.status(400).json({ error: "Invalid role" });
       }
 

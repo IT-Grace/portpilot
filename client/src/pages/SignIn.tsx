@@ -23,7 +23,7 @@ export default function SignIn() {
   useDocumentTitle("Sign in");
   const [, navigate] = useLocation();
   const [isDevLoading, setIsDevLoading] = useState<string | null>(null);
-  const [devRole, setDevRole] = useState<"user" | "moderator" | "admin">(
+  const [devRole, setDevRole] = useState<"user" | "admin">(
     "user"
   );
   const isDevelopment = import.meta.env.DEV;
@@ -158,7 +158,7 @@ export default function SignIn() {
                     </label>
                     <Select
                       value={devRole}
-                      onValueChange={(value: "user" | "moderator" | "admin") =>
+                      onValueChange={(value: "user" | "admin") =>
                         setDevRole(value)
                       }
                     >
@@ -170,12 +170,6 @@ export default function SignIn() {
                           <div className="flex items-center gap-2">
                             <Shield className="h-4 w-4" />
                             <span>User</span>
-                          </div>
-                        </SelectItem>
-                        <SelectItem value="moderator">
-                          <div className="flex items-center gap-2">
-                            <UserCog className="h-4 w-4" />
-                            <span>Moderator</span>
                           </div>
                         </SelectItem>
                         <SelectItem value="admin">
