@@ -2,6 +2,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { useToast } from "@/hooks/use-toast";
 import { FileImage, Image, Upload, X } from "lucide-react";
 import { useRef, useState } from "react";
 
@@ -26,6 +27,10 @@ export default function ImageUpload({
   const [altText, setAltText] = useState("");
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const { toast } = useToast();
+
+  const showError = (title: string, description: string) =>
+    toast({ variant: "destructive", title, description });
 
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -40,8 +45,9 @@ export default function ImageUpload({
         "image/svg+xml",
       ];
       if (!allowedTypes.includes(file.type)) {
-        alert(
-          "Please select a valid image file (JPEG, PNG, GIF, WebP, or SVG)"
+        showError(
+          "Unsupported file type",
+          "Please select a JPEG, PNG, GIF, WebP or SVG image."
         );
         return;
       }
@@ -49,7 +55,7 @@ export default function ImageUpload({
       // Validate file size (5MB limit)
       const maxSize = 5 * 1024 * 1024; // 5MB
       if (file.size > maxSize) {
-        alert("File size must be less than 5MB");
+        showError("File too large", "Images must be smaller than 5MB.");
         return;
       }
 
@@ -89,10 +95,9 @@ export default function ImageUpload({
       }
     } catch (error) {
       console.error("Error uploading image:", error);
-      alert(
-        error instanceof Error
-          ? error.message
-          : "Failed to upload image. Please try again."
+      showError(
+        "Upload failed",
+        error instanceof Error ? error.message : "Please try again."
       );
     } finally {
       setIsUploading(false);
@@ -117,7 +122,7 @@ export default function ImageUpload({
       onImagesChange(data.project.images || []);
     } catch (error) {
       console.error("Error removing image:", error);
-      alert("Failed to remove image. Please try again.");
+      showError("Couldn't remove image", "Please try again.");
     }
   };
 

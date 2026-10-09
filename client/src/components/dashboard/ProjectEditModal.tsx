@@ -143,7 +143,11 @@ export default function ProjectEditModal({
       onClose();
     } catch (error) {
       console.error("Error saving project:", error);
-      alert("Failed to save project. Please try again.");
+      toast({
+        variant: "destructive",
+        title: "Couldn't save project",
+        description: "Please try again.",
+      });
     } finally {
       setIsSaving(false);
     }

@@ -65,13 +65,6 @@ passport.use(
       done: any
     ) => {
       try {
-        console.log("GitHub profile received:", {
-          id: profile.id,
-          username: profile.username,
-          displayName: profile.displayName,
-          emails: profile.emails,
-          photos: profile.photos,
-        });
 
         // Extract user data with fallbacks
         const userData = {

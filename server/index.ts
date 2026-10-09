@@ -87,8 +87,32 @@ app.use((req, res, next) => {
   next();
 });
 
+declare module "express-session" {
+  interface SessionData {
+    returnTo?: string;
+  }
+}
+
+// Only same-site paths, so ?returnTo= can't be used as an open redirect
+function safeReturnTo(value: unknown): string | undefined {
+  return typeof value === "string" &&
+    value.startsWith("/") &&
+    !value.startsWith("//") &&
+    !value.includes("\\")
+    ? value
+    : undefined;
+}
+
 // Auth routes
-app.get("/api/auth/signin/github", passport.authenticate("github"));
+app.get(
+  "/api/auth/signin/github",
+  (req, _res, next) => {
+    // Where to land after sign-in, e.g. /admin from the admin login page
+    req.session.returnTo = safeReturnTo(req.query.returnTo);
+    next();
+  },
+  passport.authenticate("github")
+);
 
 app.get("/api/auth/github/callback", (req, res, next) => {
   passport.authenticate("github", (err: any, user: any, info: any) => {
@@ -97,13 +121,15 @@ app.get("/api/auth/github/callback", (req, res, next) => {
       const reason = info?.message === "suspended" ? "suspended" : "auth_failed";
       return res.redirect(`/signin?error=${reason}`);
     }
+    // Read before logIn: Passport regenerates the session on sign-in
+    const returnTo = safeReturnTo(req.session.returnTo) ?? "/dashboard";
     req.logIn(user, (loginErr) => {
       if (loginErr) {
         console.error("GitHub sign-in failed:", loginErr);
         return res.redirect("/signin?error=auth_failed");
       }
       console.log("Successfully authenticated user:", user.handle);
-      res.redirect("/dashboard");
+      res.redirect(returnTo);
     });
   })(req, res, next);
 });

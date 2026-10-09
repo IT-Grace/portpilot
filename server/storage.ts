@@ -163,7 +163,6 @@ export class DatabaseStorage implements IStorage {
     id: string,
     updates: Partial<Portfolio>
   ): Promise<Portfolio | undefined> {
-    console.log("updatePortfolio called with:", { id, updates });
 
     const [portfolio] = await db
       .update(portfolios)
@@ -171,7 +170,6 @@ export class DatabaseStorage implements IStorage {
       .where(eq(portfolios.id, id))
       .returning();
 
-    console.log("updatePortfolio returned:", portfolio);
     return portfolio || undefined;
   }
 

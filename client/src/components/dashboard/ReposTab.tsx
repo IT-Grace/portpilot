@@ -146,9 +146,6 @@ export function ReposTab({ plan }: ReposTabProps) {
   // Helper function to check if a project needs re-analysis
   const needsReAnalysis = (repo: Repo) => {
     if (!repo.analyzed || !repo.lastAnalyzed) {
-      console.log(
-        `${repo.name}: No re-analysis needed - analyzed: ${repo.analyzed}, lastAnalyzed: ${repo.lastAnalyzed}`
-      );
       return false;
     }
 
@@ -162,11 +159,6 @@ export function ReposTab({ plan }: ReposTabProps) {
         : new Date(repo.lastUpdated);
 
     const needsReanalysis = lastUpdated > lastAnalyzed;
-    console.log(
-      `${
-        repo.name
-      }: lastUpdated: ${lastUpdated.toISOString()}, lastAnalyzed: ${lastAnalyzed.toISOString()}, needs reanalysis: ${needsReanalysis}`
-    );
 
     // Needs re-analysis if repo was updated after it was analyzed
     return needsReanalysis;
@@ -185,7 +177,6 @@ export function ReposTab({ plan }: ReposTabProps) {
 
       if (response.ok) {
         const result = await response.json();
-        console.log("Sync completed:", result);
 
         // Show sync results to user
         const { syncedCount = 0, updatedCount = 0, removedCount = 0 } = result;
@@ -220,7 +211,6 @@ export function ReposTab({ plan }: ReposTabProps) {
 
         if (dashboardResponse.ok) {
           const data = await dashboardResponse.json();
-          console.log("Dashboard data after sync:", data.projects);
           const mergedRepos = mergeRepoData(data.projects, true);
           setRepos(mergedRepos);
           setLastSync(data.lastSyncedAt ? new Date(data.lastSyncedAt) : null);
@@ -311,7 +301,6 @@ export function ReposTab({ plan }: ReposTabProps) {
 
       if (response.ok) {
         const result = await response.json();
-        console.log("Project analysis completed:", result);
 
         // Update the project in local state with analysis results
         const updatedRepo = {

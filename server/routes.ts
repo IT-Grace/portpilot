@@ -1057,7 +1057,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
   if (process.env.NODE_ENV === "development") {
     app.post("/api/dev/login", async (req, res) => {
       try {
-        console.log("Development login request received:", req.body);
         const { userType, role } = req.body;
 
         if (!userType || !["free", "pro"].includes(userType)) {
@@ -1080,12 +1079,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
           plan = "FREE";
         }
 
-        console.log(`Attempting to get user with handle: ${handle}`);
         // Check if development user exists, create if not
         let user = await storage.getUserByHandle(handle);
 
         if (!user) {
-          console.log(`Creating new development user: ${handle}`);
           // Create development user
           const userData = {
             githubId: `dev-${userType}-${userRole}-${Date.now()}`,
@@ -1110,7 +1107,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
           );
           user = await storage.getUser(user.id);
 
-          console.log(`Created user:`, user!.id, user!.handle, user!.role);
 
           // Create portfolio for the user
           const portfolioData = {
@@ -1128,18 +1124,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
           };
 
           const portfolio = await storage.createPortfolio(portfolioData);
-          console.log(`Created portfolio:`, portfolio.id);
         } else {
-          console.log(
-            `Using existing user: ${user.handle} (${user.plan}, ${user.role})`
-          );
           // Update plan and role if they're different
           if (user.plan !== plan) {
-            console.log(`Updating user plan from ${user.plan} to ${plan}`);
             await storage.updateUser(user.id, { plan });
           }
           if (user.role !== userRole) {
-            console.log(`Updating user role from ${user.role} to ${userRole}`);
             await storage.updateUserRole(
               user.id,
               userRole as "user" | "moderator" | "admin"
@@ -1157,7 +1147,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
 
         // Log the user in
-        console.log(`Attempting to log in user: ${user.handle}`);
         req.login(user, (err) => {
           if (err) {
             console.error("Login error:", err);

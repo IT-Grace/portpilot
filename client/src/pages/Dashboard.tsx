@@ -60,13 +60,6 @@ export default function Dashboard() {
 
       if (response.ok) {
         const userData = await response.json();
-        console.log("User data received:", userData); // Debug log
-        console.log(
-          "User role:",
-          userData.role,
-          "Is admin?",
-          userData.role === "admin"
-        );
         setUser(userData);
       } else if (response.status === 401) {
         // Not authenticated, redirect to sign in

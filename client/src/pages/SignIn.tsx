@@ -1,5 +1,6 @@
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { useToast } from "@/hooks/use-toast";
 import {
   Card,
   CardContent,
@@ -22,6 +23,7 @@ import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 export default function SignIn() {
   useDocumentTitle("Sign in");
   const [, navigate] = useLocation();
+  const { toast } = useToast();
   const [isDevLoading, setIsDevLoading] = useState<string | null>(null);
   const [devRole, setDevRole] = useState<"user" | "admin">(
     "user"
@@ -38,7 +40,6 @@ export default function SignIn() {
       : null;
 
   const handleGitHubSignIn = () => {
-    // TODO: Implement NextAuth GitHub OAuth flow in backend
     window.location.href = "/api/auth/signin/github";
   };
 
@@ -54,30 +55,25 @@ export default function SignIn() {
         credentials: "include",
       });
 
-      const data = await response.json();
+      const data = await response.json().catch(() => ({}));
 
-      if (response.ok) {
-        if (data.success) {
-          console.log(
-            `Logged in as ${data.user.plan} user (${data.user.role}):`,
-            data.user
-          );
-          navigate("/dashboard");
-        } else {
-          console.error("Dev login failed - no success flag:", data);
-          alert(`Development login failed: ${data.error || "Unknown error"}`);
-        }
+      if (response.ok && data.success) {
+        navigate("/dashboard");
       } else {
-        console.error("Dev login failed with status:", response.status, data);
-        alert(`Development login failed: ${data.error || "Server error"}`);
+        console.error("Dev login failed:", response.status, data);
+        toast({
+          variant: "destructive",
+          title: "Development login failed",
+          description: data.error || "Please try again.",
+        });
       }
     } catch (error) {
       console.error("Dev login error:", error);
-      alert(
-        `Development login error: ${
-          error instanceof Error ? error.message : "Unknown error"
-        }`
-      );
+      toast({
+        variant: "destructive",
+        title: "Development login failed",
+        description: "Please check the server is running and try again.",
+      });
     } finally {
       setIsDevLoading(null);
     }

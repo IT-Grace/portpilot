@@ -170,7 +170,7 @@ export default function Home() {
               <span className="font-semibold">PortPilot</span>
             </div>
             <div className="text-sm text-muted-foreground">
-              © 2025 PortPilot. Auto-generate developer portfolios.
+              © {new Date().getFullYear()} PortPilot. Auto-generate developer portfolios.
             </div>
           </div>
         </div>

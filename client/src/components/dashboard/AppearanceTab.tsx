@@ -110,7 +110,6 @@ export function AppearanceTab() {
           (a: any, b: any) => (a.displayOrder || 0) - (b.displayOrder || 0)
         );
 
-      console.log("Selected projects with analysis data:", selected);
       setSelectedProjects(selected);
 
       // Fetch current portfolio settings using the handle from the fetched data
@@ -123,18 +122,11 @@ export function AppearanceTab() {
 
       if (portfolioResponse.ok) {
         const portfolioData = await portfolioResponse.json();
-        console.log("Fetched portfolio data:", portfolioData);
 
         const theme = portfolioData.layout?.themeId || "sleek";
         const color = portfolioData.layout?.accentColor || "#3b82f6";
         const stats = portfolioData.layout?.showStats !== false;
 
-        console.log("Parsed values:", {
-          theme,
-          color,
-          stats,
-          rawShowStats: portfolioData.layout?.showStats,
-        });
 
         setSelectedTheme(theme);
         setAccentColor(color);
@@ -281,7 +273,6 @@ export function AppearanceTab() {
         projectOrder: selectedProjects.map((p) => p.id),
       });
 
-      console.log("Changes saved successfully");
     } catch (error) {
       console.error("Error saving changes:", error);
       toast({
