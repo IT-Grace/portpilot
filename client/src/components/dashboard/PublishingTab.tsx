@@ -19,6 +19,7 @@ import {
   Copy,
   Crown,
   ExternalLink,
+  Clock,
   Globe,
 } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -141,7 +142,7 @@ export function PublishingTab({ user }: PublishingTabProps) {
       toast({
         title: "Custom domain saved",
         description:
-          "Follow the DNS configuration steps below to activate your domain",
+          "We'll add setup instructions here once custom domains are available.",
       });
     } catch (error: any) {
       console.error("Error saving custom domain:", error);
@@ -268,6 +269,7 @@ export function PublishingTab({ user }: PublishingTabProps) {
             <CardTitle className="flex items-center gap-2">
               Custom Domain
               <Crown className="h-5 w-5 text-primary" />
+              <Badge variant="outline">Coming soon</Badge>
             </CardTitle>
             <CardDescription className="mt-1.5">
               Use your own domain for your portfolio (Pro only)
@@ -303,39 +305,14 @@ export function PublishingTab({ user }: PublishingTabProps) {
                 </div>
               </div>
 
-              {customDomain && (
-                <div className="space-y-4 p-4 rounded-lg bg-muted">
-                  <h4 className="font-medium">DNS Configuration</h4>
-                  <p className="text-sm text-muted-foreground">
-                    Add the following DNS records to your domain provider:
-                  </p>
-                  <div className="space-y-3">
-                    <div className="p-3 bg-background rounded-md border border-border">
-                      <div className="grid grid-cols-3 gap-4 text-sm">
-                        <div>
-                          <span className="text-muted-foreground">Type:</span>
-                          <p className="font-mono font-medium">CNAME</p>
-                        </div>
-                        <div>
-                          <span className="text-muted-foreground">Name:</span>
-                          <p className="font-mono font-medium">@</p>
-                        </div>
-                        <div>
-                          <span className="text-muted-foreground">Value:</span>
-                          <p className="font-mono font-medium">portpilot.app</p>
-                        </div>
-                      </div>
-                    </div>
-                    <Alert>
-                      <AlertCircle className="h-4 w-4" />
-                      <AlertDescription className="text-sm">
-                        DNS changes can take up to 48 hours to propagate. We'll
-                        notify you once your custom domain is active.
-                      </AlertDescription>
-                    </Alert>
-                  </div>
-                </div>
-              )}
+              <Alert>
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription className="text-sm">
+                  Connecting custom domains is coming soon. You can save your
+                  domain now, and setup instructions will appear here once it's
+                  available.
+                </AlertDescription>
+              </Alert>
             </>
           ) : (
             <div className="text-center py-8">
@@ -344,9 +321,13 @@ export function PublishingTab({ user }: PublishingTabProps) {
               </div>
               <h4 className="font-semibold mb-2">Upgrade to Pro</h4>
               <p className="text-sm text-muted-foreground mb-4">
-                Connect a custom domain and remove PortPilot branding
+                Custom domains will be part of the Pro plan
               </p>
-              <Button className="gap-2" data-testid="button-upgrade-for-domain">
+              <Button
+                className="gap-2"
+                data-testid="button-upgrade-for-domain"
+                onClick={() => (window.location.href = "/dashboard?tab=billing")}
+              >
                 <Crown className="h-4 w-4" />
                 Upgrade to Pro
               </Button>
@@ -358,15 +339,18 @@ export function PublishingTab({ user }: PublishingTabProps) {
       {/* SEO & Sharing */}
       <Card>
         <CardHeader>
-          <CardTitle>SEO & Social Sharing</CardTitle>
+          <CardTitle className="flex items-center gap-2">
+            SEO & Social Sharing
+            <Badge variant="outline">Coming soon</Badge>
+          </CardTitle>
           <CardDescription>
-            Automatically optimized for search engines and social media
+            Planned improvements for search engines and social media
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid gap-4">
             <div className="flex items-start gap-3">
-              <Check className="h-5 w-5 text-chart-2 shrink-0 mt-0.5" />
+              <Clock className="h-5 w-5 text-muted-foreground shrink-0 mt-0.5" />
               <div>
                 <p className="font-medium text-sm">Dynamic OG Images</p>
                 <p className="text-sm text-muted-foreground">
@@ -375,7 +359,7 @@ export function PublishingTab({ user }: PublishingTabProps) {
               </div>
             </div>
             <div className="flex items-start gap-3">
-              <Check className="h-5 w-5 text-chart-2 shrink-0 mt-0.5" />
+              <Clock className="h-5 w-5 text-muted-foreground shrink-0 mt-0.5" />
               <div>
                 <p className="font-medium text-sm">SEO Meta Tags</p>
                 <p className="text-sm text-muted-foreground">
@@ -384,7 +368,7 @@ export function PublishingTab({ user }: PublishingTabProps) {
               </div>
             </div>
             <div className="flex items-start gap-3">
-              <Check className="h-5 w-5 text-chart-2 shrink-0 mt-0.5" />
+              <Clock className="h-5 w-5 text-muted-foreground shrink-0 mt-0.5" />
               <div>
                 <p className="font-medium text-sm">Sitemap & Robots.txt</p>
                 <p className="text-sm text-muted-foreground">

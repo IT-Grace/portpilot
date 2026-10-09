@@ -1,4 +1,6 @@
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { useToast } from "@/hooks/use-toast";
 import {
   Card,
   CardContent,
@@ -16,17 +18,28 @@ import {
 import { ArrowLeft, Crown, Github, Globe, Shield, UserCog } from "lucide-react";
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
+import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 
 export default function SignIn() {
+  useDocumentTitle("Sign in");
   const [, navigate] = useLocation();
+  const { toast } = useToast();
   const [isDevLoading, setIsDevLoading] = useState<string | null>(null);
-  const [devRole, setDevRole] = useState<"user" | "moderator" | "admin">(
+  const [devRole, setDevRole] = useState<"user" | "admin">(
     "user"
   );
   const isDevelopment = import.meta.env.DEV;
 
+  // Set by the GitHub OAuth callback when sign-in fails
+  const signInError = new URLSearchParams(window.location.search).get("error");
+  const signInErrorMessage =
+    signInError === "suspended"
+      ? "Your account has been suspended. Please contact support."
+      : signInError
+      ? "GitHub sign-in didn't complete. Please try again."
+      : null;
+
   const handleGitHubSignIn = () => {
-    // TODO: Implement NextAuth GitHub OAuth flow in backend
     window.location.href = "/api/auth/signin/github";
   };
 
@@ -42,30 +55,25 @@ export default function SignIn() {
         credentials: "include",
       });
 
-      const data = await response.json();
+      const data = await response.json().catch(() => ({}));
 
-      if (response.ok) {
-        if (data.success) {
-          console.log(
-            `Logged in as ${data.user.plan} user (${data.user.role}):`,
-            data.user
-          );
-          navigate("/dashboard");
-        } else {
-          console.error("Dev login failed - no success flag:", data);
-          alert(`Development login failed: ${data.error || "Unknown error"}`);
-        }
+      if (response.ok && data.success) {
+        navigate("/dashboard");
       } else {
-        console.error("Dev login failed with status:", response.status, data);
-        alert(`Development login failed: ${data.error || "Server error"}`);
+        console.error("Dev login failed:", response.status, data);
+        toast({
+          variant: "destructive",
+          title: "Development login failed",
+          description: data.error || "Please try again.",
+        });
       }
     } catch (error) {
       console.error("Dev login error:", error);
-      alert(
-        `Development login error: ${
-          error instanceof Error ? error.message : "Unknown error"
-        }`
-      );
+      toast({
+        variant: "destructive",
+        title: "Development login failed",
+        description: "Please check the server is running and try again.",
+      });
     } finally {
       setIsDevLoading(null);
     }
@@ -103,6 +111,12 @@ export default function SignIn() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
+            {signInErrorMessage && (
+              <Alert variant="destructive">
+                <AlertDescription>{signInErrorMessage}</AlertDescription>
+              </Alert>
+            )}
+
             <Button
               className="w-full gap-2 h-12"
               size="lg"
@@ -140,7 +154,7 @@ export default function SignIn() {
                     </label>
                     <Select
                       value={devRole}
-                      onValueChange={(value: "user" | "moderator" | "admin") =>
+                      onValueChange={(value: "user" | "admin") =>
                         setDevRole(value)
                       }
                     >
@@ -152,12 +166,6 @@ export default function SignIn() {
                           <div className="flex items-center gap-2">
                             <Shield className="h-4 w-4" />
                             <span>User</span>
-                          </div>
-                        </SelectItem>
-                        <SelectItem value="moderator">
-                          <div className="flex items-center gap-2">
-                            <UserCog className="h-4 w-4" />
-                            <span>Moderator</span>
                           </div>
                         </SelectItem>
                         <SelectItem value="admin">

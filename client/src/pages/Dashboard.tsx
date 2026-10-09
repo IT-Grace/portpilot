@@ -15,8 +15,10 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import type { Plan } from "@shared/schema";
 import { Globe, LogOut, Shield, User } from "lucide-react";
 import { useEffect, useState } from "react";
+import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 
 interface CurrentUser {
   id: string;
@@ -24,11 +26,12 @@ interface CurrentUser {
   handle: string;
   email: string | null;
   avatarUrl: string | null;
-  plan: string;
+  plan: Plan;
   role?: string;
 }
 
 export default function Dashboard() {
+  useDocumentTitle("Dashboard");
   const [activeTab, setActiveTab] = useState("overview");
   const [user, setUser] = useState<CurrentUser | null>(null);
   const [loading, setLoading] = useState(true);
@@ -57,13 +60,6 @@ export default function Dashboard() {
 
       if (response.ok) {
         const userData = await response.json();
-        console.log("User data received:", userData); // Debug log
-        console.log(
-          "User role:",
-          userData.role,
-          "Is admin?",
-          userData.role === "admin"
-        );
         setUser(userData);
       } else if (response.status === 401) {
         // Not authenticated, redirect to sign in
@@ -244,7 +240,7 @@ export default function Dashboard() {
           </TabsContent>
 
           <TabsContent value="repos" className="space-y-6">
-            <ReposTab />
+            <ReposTab plan={user.plan} />
           </TabsContent>
 
           <TabsContent value="appearance" className="space-y-6">
@@ -252,7 +248,7 @@ export default function Dashboard() {
           </TabsContent>
 
           <TabsContent value="billing" className="space-y-6">
-            <BillingTab />
+            <BillingTab plan={user.plan} />
           </TabsContent>
 
           <TabsContent value="publishing" className="space-y-6">

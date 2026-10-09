@@ -1,3 +1,4 @@
+import { planLimits, themes } from "@shared/schema";
 import type { Express } from "express";
 import express from "express";
 import { createServer, type Server } from "http";
@@ -8,24 +9,44 @@ import { ProjectAnalyzer } from "./services/projectAnalyzer";
 import { storage } from "./storage";
 import { deleteFile, getFileUrl, imageUpload } from "./utils/fileUpload";
 
-// GitHub API function to fetch repositories
-async function fetchGitHubRepositories(accessToken: string): Promise<any[]> {
-  const response = await fetch(
-    "https://api.github.com/user/repos?type=owner&sort=updated&per_page=50",
-    {
-      headers: {
-        Authorization: `token ${accessToken}`,
-        "User-Agent": "PortPilot/1.0",
-        Accept: "application/vnd.github.v3+json",
-      },
-    }
-  );
+// GitHub API function to fetch repositories.
+// Pages through every repo the user owns or can see via their orgs. Throws if
+// any page fails, so callers can rely on the result being the complete list.
+const GITHUB_REPOS_PER_PAGE = 100;
+const GITHUB_MAX_PAGES = 20; // 2,000 repos - guards against runaway paging
 
-  if (!response.ok) {
-    throw new Error(`GitHub API error: ${response.status}`);
+async function fetchGitHubRepositories(accessToken: string): Promise<any[]> {
+  const repos: any[] = [];
+
+  for (let page = 1; page <= GITHUB_MAX_PAGES; page++) {
+    const response = await fetch(
+      `https://api.github.com/user/repos?affiliation=owner,organization_member&sort=updated&per_page=${GITHUB_REPOS_PER_PAGE}&page=${page}`,
+      {
+        headers: {
+          Authorization: `token ${accessToken}`,
+          "User-Agent": "PortPilot/1.0",
+          Accept: "application/vnd.github.v3+json",
+        },
+      }
+    );
+
+    if (!response.ok) {
+      throw new Error(`GitHub API error: ${response.status}`);
+    }
+
+    const pageRepos = await response.json();
+    repos.push(...pageRepos);
+
+    if (pageRepos.length < GITHUB_REPOS_PER_PAGE) {
+      return repos;
+    }
   }
 
-  return await response.json();
+  throw new Error(
+    `GitHub returned more than ${
+      GITHUB_REPOS_PER_PAGE * GITHUB_MAX_PAGES
+    } repositories; sync aborted`
+  );
 }
 
 export async function registerRoutes(app: Express): Promise<Server> {
@@ -113,7 +134,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         name: user.name,
         handle: user.handle,
         email: user.email,
-        avatarUrl: user.image,
+        avatarUrl: user.avatarUrl ?? user.image,
         plan: user.plan,
         role: user.role,
       });
@@ -155,15 +176,38 @@ export async function registerRoutes(app: Express): Promise<Server> {
         0
       );
 
+      // Recent activity from real events: the last sync and recent analyses
+      const recentActivity = [
+        ...(portfolio?.lastSyncedAt
+          ? [
+              {
+                type: "sync",
+                message: `Synced ${projects.length} repositories from GitHub`,
+                time: portfolio.lastSyncedAt,
+              },
+            ]
+          : []),
+        ...projects
+          .filter((p) => p.lastAnalyzed)
+          .map((p) => ({
+            type: "analyze",
+            message: `Generated AI write-up for ${p.name}`,
+            time: p.lastAnalyzed!,
+          })),
+      ]
+        .sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime())
+        .slice(0, 5);
+
       const dashboardData = {
         user: {
           name: user.name,
           handle: user.handle,
           plan: user.plan,
         },
+        lastSyncedAt: portfolio?.lastSyncedAt ?? null,
         stats: {
-          totalProjects: projects.length,
-          totalViews: 0, // TODO: Implement view tracking
+          totalProjects: projects.filter((p) => p.selected).length,
+          totalViews: portfolio?.viewCount ?? 0,
           totalStars,
           totalForks,
           planName: user.plan === "PRO" ? "Pro" : "Free",
@@ -189,14 +233,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           stack: p.stack,
           selected: p.selected !== false, // Default to true if not set
         })),
-        recentActivity: [
-          // TODO: Implement activity tracking
-          {
-            type: "sync",
-            message: `Synced ${projects.length} repositories`,
-            time: "Recently",
-          },
-        ],
+        recentActivity,
       };
 
       res.json(dashboardData);
@@ -217,17 +254,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Portfolio not found" });
       }
 
-      // Get portfolio
+      // Get portfolio (suspended accounts' portfolios are hidden)
       const portfolio = await storage.getPortfolio(user.id);
-      if (!portfolio || !portfolio.isPublic) {
+      if (!portfolio || !portfolio.isPublic || !user.isActive) {
         return res
           .status(404)
           .json({ error: "Portfolio not found or not public" });
       }
 
-      // Get projects (only selected ones for public portfolio)
+      // Count the visit, unless it's the owner looking at their own page
+      if ((req.user as any)?.id !== user.id) {
+        await storage.incrementPortfolioViews(portfolio.id);
+      }
+
+      // Get projects (only selected ones for public portfolio), capped at the
+      // owner's plan limit so e.g. a downgraded account shows its first N.
       const allProjects = await storage.getProjects(portfolio.id);
-      const selectedProjects = allProjects.filter((p) => p.selected === true);
+      const selectedProjects = allProjects
+        .filter((p) => p.selected === true)
+        .slice(0, planLimits[user.plan].maxProjects);
+
+      // Pro themes fall back to the default theme for Free accounts
+      const isProTheme = themes.some(
+        (t) => t.id === portfolio.themeId && t.isPro
+      );
+      const themeId =
+        isProTheme && user.plan !== "PRO" ? "sleek" : portfolio.themeId;
 
       // Build portfolio model
       const portfolioModel = {
@@ -258,7 +310,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         })),
         social: portfolio.social || {},
         layout: {
-          themeId: portfolio.themeId,
+          themeId,
           accentColor: portfolio.accentColor,
           showStats: portfolio.showStats,
         },
@@ -323,20 +375,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
       let removedCount = 0;
       const existingProjects = await storage.getProjects(portfolio.id);
 
-      // Create a set of current GitHub repo URLs for efficient lookup
-      const currentRepoUrls = new Set(repos.map((repo) => repo.html_url));
+      // Match projects to repos by GitHub's stable repo ID (survives renames),
+      // falling back to URL for projects created before repoId was reliable.
+      const findRepoForProject = (project: (typeof existingProjects)[number]) =>
+        repos.find(
+          (repo) =>
+            (project.repoId && project.repoId === repo.id.toString()) ||
+            project.repoUrl === repo.html_url
+        );
 
-      // Remove projects that no longer exist on GitHub
-      for (const project of existingProjects) {
-        if (project.repoUrl && !currentRepoUrls.has(project.repoUrl)) {
-          try {
-            await storage.deleteProject(project.id);
-            removedCount++;
-            console.log(
-              `Removed project ${project.name} (no longer exists on GitHub)`
-            );
-          } catch (error) {
-            console.error(`Error removing project ${project.name}:`, error);
+      // Remove projects whose repos are gone. fetchGitHubRepositories throws
+      // unless it got the complete list, but an empty list most likely means a
+      // token/scope problem rather than every repo being deleted - skip then.
+      if (repos.length > 0) {
+        for (const project of existingProjects) {
+          if (project.repoUrl && !findRepoForProject(project)) {
+            try {
+              await storage.deleteProject(project.id);
+              for (const image of (project.images || []) as {
+                filename?: string;
+              }[]) {
+                if (image.filename) {
+                  deleteFile(image.filename);
+                }
+              }
+              removedCount++;
+              console.log(
+                `Removed project ${project.name} (no longer exists on GitHub)`
+              );
+            } catch (error) {
+              console.error(`Error removing project ${project.name}:`, error);
+            }
           }
         }
       }
@@ -344,15 +413,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Refresh existing projects list after removals
       const updatedExistingProjects = await storage.getProjects(portfolio.id);
 
+      // New public repos start selected only while there's room in the plan
+      const syncUser = await storage.getUser(userId);
+      const { maxProjects } = planLimits[syncUser?.plan ?? "FREE"];
+      let selectedCount = updatedExistingProjects.filter(
+        (p) => p.selected
+      ).length;
+
       for (const repo of repos) {
         try {
           // Check if project already exists
           const existingProject = updatedExistingProjects.find(
-            (p) => p.repoUrl === repo.html_url
+            (p) =>
+              (p.repoId && p.repoId === repo.id.toString()) ||
+              p.repoUrl === repo.html_url
           );
 
           if (!existingProject) {
-            // Create new project
+            // Create new project. Private repos start unselected so they are
+            // never published to the public portfolio without the user opting in.
+            const selected = !repo.private && selectedCount < maxProjects;
+            if (selected) selectedCount++;
             await storage.createProject({
               portfolioId: portfolio.id,
               repoId: repo.id.toString(),
@@ -370,6 +451,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               images: [],
               lastUpdated: new Date(repo.updated_at),
               analyzed: false,
+              selected,
             });
             syncedCount++;
           } else {
@@ -384,13 +466,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
             const hasMetadataUpdates =
               existingProject.stars !== repo.stargazers_count ||
               existingProject.forks !== repo.forks_count ||
-              existingProject.description !== repo.description;
+              existingProject.description !== repo.description ||
+              existingProject.repoUrl !== repo.html_url;
 
             if (hasContentUpdates || hasMetadataUpdates) {
               const updateData: any = {
+                repoId: repo.id.toString(),
+                repoUrl: repo.html_url,
                 name: repo.name,
                 description: repo.description,
-                summary: repo.description || existingProject.summary,
                 homepage: repo.homepage,
                 stars: repo.stargazers_count,
                 forks: repo.forks_count,
@@ -400,6 +484,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 topics: repo.topics || [],
                 lastUpdated: repoLastUpdated,
               };
+
+              // Keep AI-generated summaries; only un-analyzed projects track
+              // the GitHub description.
+              if (!existingProject.analyzed) {
+                updateData.summary =
+                  repo.description || existingProject.summary;
+              }
 
               // If repo content was updated (not just metadata), mark as needing re-analysis
               if (hasContentUpdates) {
@@ -416,6 +507,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           console.error(`Error syncing repo ${repo.name}:`, error);
         }
       }
+
+      await storage.updatePortfolio(portfolio.id, { lastSyncedAt: new Date() });
 
       const message = [
         syncedCount > 0 ? `${syncedCount} new repositories` : null,
@@ -437,6 +530,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
     } catch (error: any) {
       console.error("Error syncing repositories:", error);
+      if (error.message === "GitHub API error: 401") {
+        return res.status(401).json({
+          error:
+            "Your GitHub connection has expired. Please sign in with GitHub again.",
+        });
+      }
       res.status(500).json({ error: "Failed to sync repositories" });
     }
   });
@@ -506,75 +605,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
         accessToken
       );
 
-      // Perform AI analysis with fallback
+      // Perform AI analysis. On failure nothing is saved, so the project keeps
+      // its previous content instead of being overwritten with filler.
       let analysis;
       try {
         analysis = await analyzer.analyzeRepository(
           owner,
-          repo.replace(".git", "")
+          repo.replace(/\.git$/, "")
         );
       } catch (aiError) {
-        console.error("AI analysis failed, using fallback:", aiError);
-
-        // Fallback analysis if AI fails
-        analysis = {
-          summary: `${project.name} is a ${
-            project.description || "software project"
-          } that demonstrates modern development practices. This project showcases technical expertise and attention to detail in software development.`,
-          detailedDescription: `${project.name} represents a well-architected ${
-            project.description || "software solution"
-          } built with modern development practices and industry standards.\n\nThe project demonstrates strong technical implementation using ${
-            Object.keys(project.languages || {})[0] || "modern technologies"
-          } and follows established patterns for maintainable code. The architecture supports scalability and follows best practices for software development.\n\nWith ${
-            project.stars
-          } stars and ${
-            project.forks
-          } forks on GitHub, this project shows community engagement and demonstrates the developer's ability to create valuable, reusable software solutions. The codebase reflects attention to detail and professional development standards.\n\nThis project serves as an excellent example of modern software development practices and showcases technical capabilities in ${
-            Object.keys(project.languages || {})[0] || "software engineering"
-          }.`,
-          features: [
-            "Well-structured and maintainable codebase",
-            "Modern development practices and patterns",
-            project.description
-              ? "Comprehensive project documentation"
-              : "Professional development standards",
-            `Built with ${
-              Object.keys(project.languages || {})[0] || "modern technologies"
-            }`,
-            "Community engagement and open-source contribution",
-          ].slice(0, 5),
-          techStack: {
-            framework: Object.keys(project.languages || {})[0] || "JavaScript",
-            runtime: "Node.js",
-            packageManager: "npm",
-          },
-          projectType: "web-app" as const,
-          suggestedImages: [
-            {
-              type: "interface",
-              prompt: `A professional, clean interface for ${project.name} showing its main dashboard with modern UI elements, clean typography, and intuitive navigation`,
-            },
-            {
-              type: "screenshot",
-              prompt: `A detailed view of ${project.name} application interface showcasing key features and functionality with modern design patterns`,
-            },
-          ],
-          demoUrl: project.homepage || undefined,
-          keyInsights: [
-            `This project showcases expertise in ${
-              Object.keys(project.languages || {})[0] || "software development"
-            } and modern development practices`,
-            `Repository demonstrates professional code quality with ${project.stars} stars and active community engagement`,
-            `Architecture follows industry best practices for scalable and maintainable software solutions`,
-          ],
-        };
+        console.error("AI analysis failed:", aiError);
+        return res.status(502).json({
+          error:
+            "AI analysis couldn't be completed right now. Your project hasn't been changed - please try again in a moment.",
+        });
       }
 
       // Update project with analysis results (keeping existing manually uploaded images)
       const updatedProject = await storage.updateProject(projectId, {
         summary: analysis.summary,
         detailedDescription: analysis.detailedDescription,
-        features: (analysis as any).keyFeatures || analysis.features || [], // Handle both field names
+        features: analysis.features,
         stack: analysis.techStack,
         lastAnalyzed: new Date(),
         analyzed: true,
@@ -772,20 +823,40 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const userId = (req.user as any).id;
       const { projectId, selected } = req.body;
 
+      if (typeof selected !== "boolean") {
+        return res.status(400).json({ error: "selected must be a boolean" });
+      }
+
       // Get user's portfolio to verify ownership
       const portfolio = await storage.getPortfolio(userId);
       if (!portfolio) {
         return res.status(404).json({ error: "Portfolio not found" });
       }
 
-      // Update the project's selected status
-      const updatedProject = await storage.updateProject(projectId, {
-        selected: selected,
-      });
-
-      if (!updatedProject) {
+      const portfolioProjects = await storage.getProjects(portfolio.id);
+      const project = portfolioProjects.find((p) => p.id === projectId);
+      if (!project) {
         return res.status(404).json({ error: "Project not found" });
       }
+
+      // Enforce the plan's project limit when adding to the portfolio
+      if (selected && !project.selected) {
+        const user = await storage.getUser(userId);
+        const { maxProjects } = planLimits[user?.plan ?? "FREE"];
+        const selectedCount = portfolioProjects.filter((p) => p.selected).length;
+        if (selectedCount >= maxProjects) {
+          return res.status(403).json({
+            error: `Your plan allows up to ${maxProjects} projects in your portfolio. Deselect another project first${
+              user?.plan === "PRO" ? "" : ", or upgrade to Pro"
+            }.`,
+          });
+        }
+      }
+
+      // Update the project's selected status
+      const updatedProject = await storage.updateProject(projectId, {
+        selected,
+      });
 
       res.json({ success: true, project: updatedProject });
     } catch (error: any) {
@@ -804,28 +875,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const userId = (req.user as any).id;
       const { themeId, accentColor, showStats } = req.body;
 
-      console.log("Received request body:", req.body);
-      console.log("Extracted values:", {
-        themeId,
-        accentColor,
-        showStats,
-        typeofShowStats: typeof showStats,
-      });
+      if (themeId !== undefined) {
+        const theme = themes.find((t) => t.id === themeId);
+        if (!theme) {
+          return res.status(400).json({ error: "Unknown theme" });
+        }
+        if (theme.isPro) {
+          const user = await storage.getUser(userId);
+          if (user?.plan !== "PRO") {
+            return res.status(403).json({
+              error: `The ${theme.name} theme is available on the Pro plan.`,
+            });
+          }
+        }
+      }
 
       const portfolio = await storage.getPortfolio(userId);
       if (!portfolio) {
         return res.status(404).json({ error: "Portfolio not found" });
       }
 
-      console.log("Current portfolio before update:", portfolio);
-
       const updated = await storage.updatePortfolio(portfolio.id, {
         themeId,
         accentColor,
         showStats,
       });
-
-      console.log("Updated portfolio after update:", updated);
 
       res.json(updated);
     } catch (error: any) {
@@ -837,7 +911,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Portfolio Management - Update project order
   app.post("/api/portfolio/order", async (req, res) => {
     try {
+      if (!req.user) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+
       const { projectOrders } = req.body; // Array of { projectId, order }
+      if (!Array.isArray(projectOrders)) {
+        return res.status(400).json({ error: "projectOrders must be an array" });
+      }
+
+      const portfolio = await storage.getPortfolio((req.user as any).id);
+      if (!portfolio) {
+        return res.status(404).json({ error: "Portfolio not found" });
+      }
+
+      // Only allow reordering projects in the user's own portfolio
+      const ownedIds = new Set(
+        (await storage.getProjects(portfolio.id)).map((p) => p.id)
+      );
+      if (
+        projectOrders.some(
+          ({ projectId, order }) =>
+            !ownedIds.has(projectId) || !Number.isInteger(order)
+        )
+      ) {
+        return res.status(403).json({ error: "Access denied" });
+      }
 
       for (const { projectId, order } of projectOrders) {
         await storage.updateProjectOrder(projectId, order);
@@ -951,14 +1050,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Stripe Billing - Create checkout session
   app.post("/api/billing/checkout", async (req, res) => {
     // TODO: Implement Stripe Checkout
-    res.json({ url: "https://checkout.stripe.com/placeholder" });
+    res.status(501).json({ error: "Billing is not available yet" });
   });
 
   // Development Login Endpoints (only in development)
   if (process.env.NODE_ENV === "development") {
     app.post("/api/dev/login", async (req, res) => {
       try {
-        console.log("Development login request received:", req.body);
         const { userType, role } = req.body;
 
         if (!userType || !["free", "pro"].includes(userType)) {
@@ -968,7 +1066,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
 
         const userRole =
-          role && ["user", "moderator", "admin"].includes(role) ? role : "user";
+          role && ["user", "admin"].includes(role) ? role : "user";
 
         let handle: string;
         let plan: "FREE" | "PRO";
@@ -981,12 +1079,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
           plan = "FREE";
         }
 
-        console.log(`Attempting to get user with handle: ${handle}`);
         // Check if development user exists, create if not
         let user = await storage.getUserByHandle(handle);
 
         if (!user) {
-          console.log(`Creating new development user: ${handle}`);
           // Create development user
           const userData = {
             githubId: `dev-${userType}-${userRole}-${Date.now()}`,
@@ -1011,7 +1107,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
           );
           user = await storage.getUser(user.id);
 
-          console.log(`Created user:`, user!.id, user!.handle, user!.role);
 
           // Create portfolio for the user
           const portfolioData = {
@@ -1029,18 +1124,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
           };
 
           const portfolio = await storage.createPortfolio(portfolioData);
-          console.log(`Created portfolio:`, portfolio.id);
         } else {
-          console.log(
-            `Using existing user: ${user.handle} (${user.plan}, ${user.role})`
-          );
           // Update plan and role if they're different
           if (user.plan !== plan) {
-            console.log(`Updating user plan from ${user.plan} to ${plan}`);
             await storage.updateUser(user.id, { plan });
           }
           if (user.role !== userRole) {
-            console.log(`Updating user role from ${user.role} to ${userRole}`);
             await storage.updateUserRole(
               user.id,
               userRole as "user" | "moderator" | "admin"
@@ -1058,7 +1147,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
 
         // Log the user in
-        console.log(`Attempting to log in user: ${user.handle}`);
         req.login(user, (err) => {
           if (err) {
             console.error("Login error:", err);
@@ -1226,7 +1314,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { userId } = req.params;
       const { role } = req.body;
 
-      if (!["user", "moderator", "admin"].includes(role)) {
+      // "moderator" still exists in the DB enum but grants nothing, so it
+      // can't be assigned
+      if (!["user", "admin"].includes(role)) {
         return res.status(400).json({ error: "Invalid role" });
       }
 
@@ -1303,6 +1393,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
     async (req, res) => {
       try {
         const { userId } = req.params;
+
+        if (userId === (req.user as any).id) {
+          return res
+            .status(400)
+            .json({ error: "You can't suspend your own account" });
+        }
 
         const updatedUser = await storage.toggleUserActiveStatus(userId);
         if (!updatedUser) {

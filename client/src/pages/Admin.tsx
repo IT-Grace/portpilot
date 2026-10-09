@@ -1,5 +1,4 @@
 import { ActivityLogTab } from "@/components/dashboard/admin/ActivityLogTab";
-import { PermissionsMatrixTab } from "@/components/dashboard/admin/PermissionsMatrixTab";
 import { StatisticsTab } from "@/components/dashboard/admin/StatisticsTab";
 import { UsersTab } from "@/components/dashboard/admin/UsersTab";
 import { Button } from "@/components/ui/button";
@@ -23,13 +22,13 @@ import {
   Activity,
   ArrowLeft,
   BarChart3,
-  Crown,
-  Lock,
   Shield,
   Users,
 } from "lucide-react";
+import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 
 export default function Admin() {
+  useDocumentTitle("Admin");
   const { data: usersData, isLoading: usersLoading } = useAdminUsers();
   const { data: actionsData, isLoading: actionsLoading } = useAdminActions();
 
@@ -80,7 +79,7 @@ export default function Admin() {
                 Admin Dashboard
               </h1>
               <p className="text-muted-foreground">
-                Manage users, permissions, and platform settings
+                Manage users, plans, and platform activity
               </p>
             </div>
           </div>
@@ -88,7 +87,7 @@ export default function Admin() {
 
         {/* Tabs */}
         <Tabs defaultValue="statistics" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-5 lg:w-[800px]">
+          <TabsList className="grid w-full grid-cols-3 lg:w-[480px]">
             <TabsTrigger value="statistics" className="gap-2">
               <BarChart3 className="h-4 w-4" />
               Statistics
@@ -96,14 +95,6 @@ export default function Admin() {
             <TabsTrigger value="users" className="gap-2">
               <Users className="h-4 w-4" />
               Users
-            </TabsTrigger>
-            <TabsTrigger value="permissions" className="gap-2">
-              <Lock className="h-4 w-4" />
-              Permissions
-            </TabsTrigger>
-            <TabsTrigger value="roles" className="gap-2">
-              <Crown className="h-4 w-4" />
-              Roles & Plans
             </TabsTrigger>
             <TabsTrigger value="activity" className="gap-2">
               <Activity className="h-4 w-4" />
@@ -147,38 +138,6 @@ export default function Admin() {
                   onDeleteUser={handleDeleteUser}
                   isLoading={usersLoading}
                 />
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          {/* Permissions Matrix Tab */}
-          <TabsContent value="permissions">
-            <Card>
-              <CardHeader>
-                <CardTitle>Permissions Matrix</CardTitle>
-                <CardDescription>
-                  View role-based permissions and access control
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <PermissionsMatrixTab />
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          {/* Roles & Plans Tab */}
-          <TabsContent value="roles">
-            <Card>
-              <CardHeader>
-                <CardTitle>Roles & Plans</CardTitle>
-                <CardDescription>
-                  Manage user roles and subscription plans
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <p className="text-sm text-muted-foreground">
-                  Roles & Plans tab content coming soon...
-                </p>
               </CardContent>
             </Card>
           </TabsContent>

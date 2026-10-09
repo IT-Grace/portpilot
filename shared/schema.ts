@@ -1,6 +1,7 @@
 import { relations, sql } from "drizzle-orm";
 import {
   boolean,
+  index,
   integer,
   json,
   pgEnum,
@@ -57,6 +58,8 @@ export const portfolios = pgTable("portfolios", {
   isPublic: boolean("is_public").default(false).notNull(),
   customDomain: varchar("custom_domain"),
   showStats: boolean("show_stats").default(true).notNull(),
+  lastSyncedAt: timestamp("last_synced_at"),
+  viewCount: integer("view_count").default(0).notNull(),
   social: json("social").$type<{
     github?: string;
     x?: string;
@@ -194,6 +197,18 @@ export const verificationTokens = pgTable(
   (vt) => ({
     compoundKey: sql`PRIMARY KEY (${vt.identifier}, ${vt.token})`,
   })
+);
+
+// Login sessions, managed by connect-pg-simple (express-session store).
+// Column names and types must match what connect-pg-simple expects.
+export const userSessions = pgTable(
+  "user_sessions",
+  {
+    sid: varchar("sid").primaryKey(),
+    sess: json("sess").notNull(),
+    expire: timestamp("expire", { precision: 6 }).notNull(),
+  },
+  (table) => [index("IDX_user_sessions_expire").on(table.expire)]
 );
 
 // Relations
@@ -359,6 +374,14 @@ export type PortfolioModel = {
     accentColor?: string | null;
     showStats: boolean;
   };
+};
+
+// Plan configuration
+export type Plan = (typeof planEnum.enumValues)[number];
+
+export const planLimits: Record<Plan, { maxProjects: number }> = {
+  FREE: { maxProjects: 6 },
+  PRO: { maxProjects: 30 },
 };
 
 // Theme configuration

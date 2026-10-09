@@ -16,6 +16,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { useToast } from "@/hooks/use-toast";
+import { planLimits, type Plan } from "@shared/schema";
 import { formatDistanceToNow } from "date-fns";
 import {
   Brain,
@@ -52,7 +54,11 @@ type Repo = {
   images?: Array<{ url: string; alt: string; filename?: string }>;
 };
 
-export function ReposTab() {
+interface ReposTabProps {
+  plan: Plan;
+}
+
+export function ReposTab({ plan }: ReposTabProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [sortBy, setSortBy] = useState("updated");
   const [languageFilter, setLanguageFilter] = useState("all");
@@ -60,6 +66,8 @@ export function ReposTab() {
   const [editingProject, setEditingProject] = useState<Repo | null>(null);
   const [repos, setRepos] = useState<Repo[]>([]);
   const [loading, setLoading] = useState(true);
+  const [lastSync, setLastSync] = useState<Date | null>(null);
+  const { toast } = useToast();
 
   useEffect(() => {
     fetchDashboardData();
@@ -121,6 +129,7 @@ export function ReposTab() {
         const data = await response.json();
         const mergedRepos = mergeRepoData(data.projects, false);
         setRepos(mergedRepos);
+        setLastSync(data.lastSyncedAt ? new Date(data.lastSyncedAt) : null);
       } else {
         console.error("Failed to fetch dashboard data");
       }
@@ -131,16 +140,12 @@ export function ReposTab() {
     }
   };
 
-  const lastSync = new Date(Date.now() - 1000 * 60 * 60 * 2);
   const selectedCount = repos.filter((r) => r.selected).length;
-  const maxProjects = 6; // TODO: Get from user plan
+  const { maxProjects } = planLimits[plan];
 
   // Helper function to check if a project needs re-analysis
   const needsReAnalysis = (repo: Repo) => {
     if (!repo.analyzed || !repo.lastAnalyzed) {
-      console.log(
-        `${repo.name}: No re-analysis needed - analyzed: ${repo.analyzed}, lastAnalyzed: ${repo.lastAnalyzed}`
-      );
       return false;
     }
 
@@ -154,11 +159,6 @@ export function ReposTab() {
         : new Date(repo.lastUpdated);
 
     const needsReanalysis = lastUpdated > lastAnalyzed;
-    console.log(
-      `${
-        repo.name
-      }: lastUpdated: ${lastUpdated.toISOString()}, lastAnalyzed: ${lastAnalyzed.toISOString()}, needs reanalysis: ${needsReanalysis}`
-    );
 
     // Needs re-analysis if repo was updated after it was analyzed
     return needsReanalysis;
@@ -177,7 +177,6 @@ export function ReposTab() {
 
       if (response.ok) {
         const result = await response.json();
-        console.log("Sync completed:", result);
 
         // Show sync results to user
         const { syncedCount = 0, updatedCount = 0, removedCount = 0 } = result;
@@ -191,15 +190,18 @@ export function ReposTab() {
             parts.push(`Removed ${removedCount} repositories`);
 
           const message = parts.join(", ") + ".";
-          if (updatedCount > 0) {
-            alert(
-              `Sync completed! ${message}\n\nNote: Updated repositories may need re-analysis to refresh AI-generated content.`
-            );
-          } else {
-            alert(`Sync completed! ${message}`);
-          }
+          toast({
+            title: "Sync completed",
+            description:
+              updatedCount > 0
+                ? `${message} Updated repositories may need re-analysis to refresh AI-generated content.`
+                : message,
+          });
         } else {
-          alert("Sync completed! All repositories are up to date.");
+          toast({
+            title: "Sync completed",
+            description: "All repositories are up to date.",
+          });
         }
 
         // Fetch updated data and merge with existing state
@@ -209,20 +211,26 @@ export function ReposTab() {
 
         if (dashboardResponse.ok) {
           const data = await dashboardResponse.json();
-          console.log("Dashboard data after sync:", data.projects);
           const mergedRepos = mergeRepoData(data.projects, true);
-          console.log("Merged repos:", mergedRepos);
           setRepos(mergedRepos);
+          setLastSync(data.lastSyncedAt ? new Date(data.lastSyncedAt) : null);
         }
       } else {
-        console.error("Sync failed:", response.statusText);
-        alert("Sync failed. Please try again.");
+        const errorData = await response.json().catch(() => ({}));
+        console.error("Sync failed:", response.status, errorData);
+        toast({
+          variant: "destructive",
+          title: "Sync failed",
+          description: errorData.error || "Please try again.",
+        });
       }
     } catch (error) {
       console.error("Error syncing repositories:", error);
-      alert(
-        "Error syncing repositories. Please check your connection and try again."
-      );
+      toast({
+        variant: "destructive",
+        title: "Sync failed",
+        description: "Please check your connection and try again.",
+      });
     } finally {
       setSyncing(false);
     }
@@ -237,9 +245,14 @@ export function ReposTab() {
       prev.map((r) => (r.id === id ? { ...r, selected: newSelected } : r))
     );
 
+    const revert = () =>
+      setRepos((prev) =>
+        prev.map((r) => (r.id === id ? { ...r, selected: !newSelected } : r))
+      );
+
     // Update selection on server
     try {
-      await fetch("/api/portfolio/projects/selection", {
+      const response = await fetch("/api/portfolio/projects/selection", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -250,12 +263,24 @@ export function ReposTab() {
           selected: newSelected,
         }),
       });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        revert();
+        toast({
+          variant: "destructive",
+          title: "Couldn't update selection",
+          description: errorData.error || "Please try again.",
+        });
+      }
     } catch (error) {
       console.error("Error updating project selection:", error);
-      // Revert on error
-      setRepos((prev) =>
-        prev.map((r) => (r.id === id ? { ...r, selected: !newSelected } : r))
-      );
+      revert();
+      toast({
+        variant: "destructive",
+        title: "Couldn't update selection",
+        description: "Please check your connection and try again.",
+      });
     }
   };
 
@@ -276,7 +301,6 @@ export function ReposTab() {
 
       if (response.ok) {
         const result = await response.json();
-        console.log("Project analysis completed:", result);
 
         // Update the project in local state with analysis results
         const updatedRepo = {
@@ -304,7 +328,11 @@ export function ReposTab() {
           .json()
           .catch(() => ({ error: response.statusText }));
         console.error("Analysis failed:", errorData);
-        alert(`Analysis failed: ${errorData.error || response.statusText}`);
+        toast({
+          variant: "destructive",
+          title: "Analysis failed",
+          description: errorData.error || "Please try again.",
+        });
 
         // Remove loading state
         setRepos((prev) =>
@@ -313,11 +341,11 @@ export function ReposTab() {
       }
     } catch (error) {
       console.error("Error analyzing project:", error);
-      alert(
-        `Error analyzing project: ${
-          error instanceof Error ? error.message : "Unknown error"
-        }`
-      );
+      toast({
+        variant: "destructive",
+        title: "Analysis failed",
+        description: "Please check your connection and try again.",
+      });
 
       // Remove loading state
       setRepos((prev) =>
@@ -389,10 +417,11 @@ export function ReposTab() {
           <div>
             <CardTitle>GitHub Sync</CardTitle>
             <CardDescription>
-              Last synced{" "}
-              {lastSync && !isNaN(lastSync.getTime())
-                ? formatDistanceToNow(lastSync, { addSuffix: true })
-                : "recently"}
+              {lastSync
+                ? `Last synced ${formatDistanceToNow(lastSync, {
+                    addSuffix: true,
+                  })}`
+                : "Not synced yet"}
             </CardDescription>
           </div>
           <Button

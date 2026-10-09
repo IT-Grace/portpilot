@@ -2,8 +2,11 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { ArrowRight, Github, Palette, Zap, Globe } from "lucide-react";
 import { Link } from "wouter";
+import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 
 export default function Home() {
+  useDocumentTitle("");
+
   return (
     <div className="min-h-screen bg-background">
       {/* Hero Section */}
@@ -167,7 +170,7 @@ export default function Home() {
               <span className="font-semibold">PortPilot</span>
             </div>
             <div className="text-sm text-muted-foreground">
-              © 2025 PortPilot. Auto-generate developer portfolios.
+              © {new Date().getFullYear()} PortPilot. Auto-generate developer portfolios.
             </div>
           </div>
         </div>

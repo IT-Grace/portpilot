@@ -4,6 +4,7 @@ import { type Server } from "http";
 import { nanoid } from "nanoid";
 import path from "path";
 import { createLogger, createServer as createViteServer } from "vite";
+import { injectPortfolioMeta } from "./portfolioMeta";
 
 const viteLogger = createLogger();
 
@@ -23,6 +24,12 @@ export async function setupVite(app: Express, server: Server) {
     middlewareMode: true,
     hmr: { server },
     allowedHosts: true as const,
+    // Docker Desktop bind mounts don't forward file-change events, so the
+    // container opts into polling via CHOKIDAR_USEPOLLING.
+    watch:
+      process.env.CHOKIDAR_USEPOLLING === "true"
+        ? { usePolling: true, interval: 300 }
+        : undefined,
   };
 
   // Don't import vite.config.ts - let Vite find it automatically
@@ -61,6 +68,7 @@ export async function setupVite(app: Express, server: Server) {
         `src="/src/main.tsx"`,
         `src="/src/main.tsx?v=${nanoid()}"`
       );
+      template = await injectPortfolioMeta(template, req);
       const page = await vite.transformIndexHtml(url, template);
       res.status(200).set({ "Content-Type": "text/html" }).end(page);
     } catch (e) {

@@ -41,7 +41,6 @@ export function StatisticsTab({
   const freeUsers = users.filter((u) => u.plan === "FREE").length;
   const proUsers = users.filter((u) => u.plan === "PRO").length;
   const adminUsers = users.filter((u) => u.role === "admin").length;
-  const moderatorUsers = users.filter((u) => u.role === "moderator").length;
   const regularUsers = users.filter((u) => u.role === "user").length;
 
   // Calculate growth (last 7 days vs all time)
@@ -103,12 +102,6 @@ export function StatisticsTab({
       value: regularUsers,
       icon: Shield,
       percentage: ((regularUsers / totalUsers) * 100).toFixed(1),
-    },
-    {
-      title: "Moderators",
-      value: moderatorUsers,
-      icon: UserCheck,
-      percentage: ((moderatorUsers / totalUsers) * 100).toFixed(1),
     },
     {
       title: "Administrators",
@@ -182,7 +175,7 @@ export function StatisticsTab({
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid gap-4 md:grid-cols-3">
+          <div className="grid gap-4 md:grid-cols-2">
             {roleStats.map((role) => {
               const Icon = role.icon;
               return (

@@ -9,11 +9,13 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Loader2 } from "lucide-react";
+import { Github, Loader2 } from "lucide-react";
 import { useState } from "react";
 import { useLocation } from "wouter";
+import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 
 export default function AdminLogin() {
+  useDocumentTitle("Admin sign in");
   const [, setLocation] = useLocation();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -69,7 +71,30 @@ export default function AdminLogin() {
             Enter your credentials to access the admin panel
           </CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-6">
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full gap-2"
+            onClick={() =>
+              (window.location.href = "/api/auth/signin/github?returnTo=/admin")
+            }
+          >
+            <Github className="h-4 w-4" />
+            Continue with GitHub
+          </Button>
+
+          <div className="relative">
+            <div className="absolute inset-0 flex items-center">
+              <span className="w-full border-t" />
+            </div>
+            <div className="relative flex justify-center text-xs uppercase">
+              <span className="bg-card px-2 text-muted-foreground">
+                Or use a password
+              </span>
+            </div>
+          </div>
+
           <form onSubmit={handleSubmit} className="space-y-4">
             {error && (
               <Alert variant="destructive">

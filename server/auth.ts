@@ -53,7 +53,10 @@ passport.use(
       clientID: process.env.GITHUB_CLIENT_ID!,
       clientSecret: process.env.GITHUB_CLIENT_SECRET!,
       callbackURL: process.env.GITHUB_CALLBACK_URL!,
-      scope: ["user", "repo"],
+      // Read-only: public profile plus public repos (which need no scope).
+      // PortPilot never writes to GitHub; `user` and `repo` both grant write
+      // access, and `repo` has no read-only variant for private repos.
+      scope: ["read:user"],
     },
     async (
       accessToken: string,
@@ -62,13 +65,6 @@ passport.use(
       done: any
     ) => {
       try {
-        console.log("GitHub profile received:", {
-          id: profile.id,
-          username: profile.username,
-          displayName: profile.displayName,
-          emails: profile.emails,
-          photos: profile.photos,
-        });
 
         // Extract user data with fallbacks
         const userData = {
@@ -92,6 +88,11 @@ passport.use(
         let user = await db.query.users.findFirst({
           where: eq(users.githubId, profile.id),
         });
+
+        if (user && !user.isActive) {
+          console.log("Blocked sign-in for suspended user:", user.handle);
+          return done(null, false, { message: "suspended" });
+        }
 
         if (user) {
           // Update existing user
@@ -125,7 +126,7 @@ passport.use(
               .set({
                 accessToken,
                 refreshToken: refreshToken || null,
-                scopes: "user,repo",
+                scopes: "read:user",
                 updatedAt: new Date(),
               })
               .where(eq(integrations.id, existingIntegration.id));
@@ -136,7 +137,7 @@ passport.use(
               provider: "github",
               accessToken,
               refreshToken: refreshToken || null,
-              scopes: "user,repo",
+              scopes: "read:user",
             });
           }
 
@@ -159,7 +160,7 @@ passport.use(
             provider: "github",
             accessToken,
             refreshToken: refreshToken || null,
-            scopes: "user",
+            scopes: "read:user",
           });
 
           return done(null, newUser);
@@ -227,7 +228,8 @@ passport.deserializeUser(async (id: string, done) => {
     const user = await db.query.users.findFirst({
       where: eq(users.id, id),
     });
-    done(null, user);
+    // Suspended (or deleted) users are signed out on their next request
+    done(null, user && user.isActive ? user : false);
   } catch (error) {
     done(error, null);
   }

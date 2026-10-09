@@ -1,15 +1,21 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { useToast } from "@/hooks/use-toast";
+import { planLimits, type Plan } from "@shared/schema";
 import { Check, Crown, ExternalLink } from "lucide-react";
 
-export function BillingTab() {
-  const currentPlan = "FREE"; // TODO: Get from context
+interface BillingTabProps {
+  plan: Plan;
+}
+
+export function BillingTab({ plan }: BillingTabProps) {
+  const currentPlan = plan;
   const isPro = currentPlan === "PRO";
 
   const features = {
     free: [
-      "Up to 6 projects",
+      `Up to ${planLimits.FREE.maxProjects} projects`,
       "2 themes (Sleek, CardGrid)",
       "Public portfolio URL",
       "GitHub sync",
@@ -17,24 +23,33 @@ export function BillingTab() {
       "Basic statistics",
     ],
     pro: [
-      "Up to 30 projects",
-      "All 4 themes",
-      "Custom domain",
-      "Priority sync",
-      "Advanced analytics",
-      "Remove PortPilot branding",
-      "Priority support",
+      { label: `Up to ${planLimits.PRO.maxProjects} projects` },
+      { label: "All 4 themes" },
+      { label: "Custom domain", comingSoon: true },
+      { label: "Priority sync", comingSoon: true },
+      { label: "Advanced analytics", comingSoon: true },
+      { label: "Remove PortPilot branding", comingSoon: true },
+      { label: "Priority support", comingSoon: true },
     ],
   };
 
+  const { toast } = useToast();
+
+  // TODO: Replace with Stripe Checkout / Customer Portal once live keys exist
   const handleUpgrade = () => {
-    // TODO: Redirect to Stripe Checkout
-    window.location.href = "/api/billing/checkout";
+    toast({
+      title: "Pro upgrades are coming soon",
+      description:
+        "Online payments aren't available yet. We'll let you know as soon as you can upgrade.",
+    });
   };
 
   const handleManageSubscription = () => {
-    // TODO: Redirect to Stripe Customer Portal
-    window.location.href = "/api/billing/portal";
+    toast({
+      title: "Subscription management is coming soon",
+      description:
+        "Billing changes aren't available online yet. Please contact support for help with your plan.",
+    });
   };
 
   return (
@@ -161,7 +176,14 @@ export function BillingTab() {
               {features.pro.map((feature, i) => (
                 <li key={i} className="flex items-start gap-3">
                   <Check className="h-5 w-5 text-primary shrink-0 mt-0.5" />
-                  <span className="text-sm font-medium">{feature}</span>
+                  <span className="text-sm font-medium">
+                    {feature.label}
+                    {feature.comingSoon && (
+                      <span className="ml-2 text-xs font-normal text-muted-foreground">
+                        Coming soon
+                      </span>
+                    )}
+                  </span>
                 </li>
               ))}
             </ul>
@@ -213,8 +235,8 @@ export function BillingTab() {
           <div>
             <h4 className="font-medium mb-2">How does custom domain work?</h4>
             <p className="text-sm text-muted-foreground">
-              Pro users can connect a custom domain by adding a CNAME record pointing to our servers.
-              We provide step-by-step instructions in the Publishing tab.
+              Custom domains are coming soon for Pro users. You'll be able to point your
+              own domain at your portfolio, with setup instructions in the Publishing tab.
             </p>
           </div>
         </CardContent>

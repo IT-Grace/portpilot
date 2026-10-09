@@ -1,11 +1,15 @@
 import dotenv from "dotenv";
 dotenv.config();
 
+import connectPgSimple from "connect-pg-simple";
 import express, { NextFunction, type Request, Response } from "express";
 import session from "express-session";
+import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import passport from "./auth";
+import { injectPortfolioMeta } from "./portfolioMeta";
+import { pool } from "./db";
 import { registerRoutes } from "./routes";
 
 const app = express();
@@ -13,9 +17,16 @@ app.set("env", process.env.NODE_ENV || "development");
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 
-// Session middleware
+// Session middleware. Sessions live in Postgres so restarts and redeploys
+// don't log everyone out.
+const PgSessionStore = connectPgSimple(session);
+
 app.use(
   session({
+    store: new PgSessionStore({
+      pool,
+      tableName: "user_sessions",
+    }),
     secret:
       process.env.SESSION_SECRET ||
       process.env.AUTH_SECRET ||
@@ -76,21 +87,52 @@ app.use((req, res, next) => {
   next();
 });
 
-// Auth routes
-app.get("/api/auth/signin/github", passport.authenticate("github"));
-
-app.get(
-  "/api/auth/github/callback",
-  passport.authenticate("github", {
-    failureRedirect: "/?error=auth_failed",
-    failureFlash: false,
-  }),
-  (req, res) => {
-    // Successful authentication, redirect to dashboard
-    console.log("Successfully authenticated user:", req.user);
-    res.redirect("/dashboard");
+declare module "express-session" {
+  interface SessionData {
+    returnTo?: string;
   }
+}
+
+// Only same-site paths, so ?returnTo= can't be used as an open redirect
+function safeReturnTo(value: unknown): string | undefined {
+  return typeof value === "string" &&
+    value.startsWith("/") &&
+    !value.startsWith("//") &&
+    !value.includes("\\")
+    ? value
+    : undefined;
+}
+
+// Auth routes
+app.get(
+  "/api/auth/signin/github",
+  (req, _res, next) => {
+    // Where to land after sign-in, e.g. /admin from the admin login page
+    req.session.returnTo = safeReturnTo(req.query.returnTo);
+    next();
+  },
+  passport.authenticate("github")
 );
+
+app.get("/api/auth/github/callback", (req, res, next) => {
+  passport.authenticate("github", (err: any, user: any, info: any) => {
+    if (err || !user) {
+      if (err) console.error("GitHub sign-in failed:", err);
+      const reason = info?.message === "suspended" ? "suspended" : "auth_failed";
+      return res.redirect(`/signin?error=${reason}`);
+    }
+    // Read before logIn: Passport regenerates the session on sign-in
+    const returnTo = safeReturnTo(req.session.returnTo) ?? "/dashboard";
+    req.logIn(user, (loginErr) => {
+      if (loginErr) {
+        console.error("GitHub sign-in failed:", loginErr);
+        return res.redirect("/signin?error=auth_failed");
+      }
+      console.log("Successfully authenticated user:", user.handle);
+      res.redirect(returnTo);
+    });
+  })(req, res, next);
+});
 
 app.get("/api/auth/signout", (req, res) => {
   req.logout((err) => {
@@ -103,7 +145,8 @@ app.get("/api/auth/signout", (req, res) => {
 
 app.get("/api/auth/session", (req, res) => {
   if (req.user) {
-    res.json({ user: req.user });
+    const { id, handle, name, email, role, plan } = req.user as any;
+    res.json({ user: { id, handle, name, email, role, plan } });
   } else {
     res.status(401).json({ error: "Not authenticated" });
   }
@@ -146,13 +189,20 @@ app.get("/api/auth/session", (req, res) => {
     app.use(express.static(publicDir));
 
     // Catch-all route for client-side routing
-    app.use("*", (req, res) => {
+    const indexPath = path.join(publicDir, "index.html");
+    app.use("*", async (req, res) => {
       // Skip API routes - they should have been handled already
       if (req.originalUrl.startsWith("/api/")) {
         return res.status(404).json({ error: "API endpoint not found" });
       }
 
-      const indexPath = path.join(publicDir, "index.html");
+      // Public portfolio pages get per-user title/Open Graph tags for link previews
+      if (req.originalUrl.startsWith("/u/")) {
+        const template = await fs.promises.readFile(indexPath, "utf-8");
+        const page = await injectPortfolioMeta(template, req);
+        return res.status(200).set({ "Content-Type": "text/html" }).end(page);
+      }
+
       res.sendFile(indexPath);
     });
   }

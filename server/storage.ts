@@ -18,7 +18,7 @@ import {
   type SyncJob,
   type User,
 } from "@shared/schema";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { db } from "./db";
 
 export interface IStorage {
@@ -41,6 +41,7 @@ export interface IStorage {
     portfolioId: string,
     isPublic: boolean
   ): Promise<Portfolio | undefined>;
+  incrementPortfolioViews(portfolioId: string): Promise<void>;
 
   // Projects
   getProjects(portfolioId: string): Promise<Project[]>;
@@ -162,7 +163,6 @@ export class DatabaseStorage implements IStorage {
     id: string,
     updates: Partial<Portfolio>
   ): Promise<Portfolio | undefined> {
-    console.log("updatePortfolio called with:", { id, updates });
 
     const [portfolio] = await db
       .update(portfolios)
@@ -170,7 +170,6 @@ export class DatabaseStorage implements IStorage {
       .where(eq(portfolios.id, id))
       .returning();
 
-    console.log("updatePortfolio returned:", portfolio);
     return portfolio || undefined;
   }
 
@@ -186,13 +185,20 @@ export class DatabaseStorage implements IStorage {
     return portfolio || undefined;
   }
 
+  async incrementPortfolioViews(portfolioId: string): Promise<void> {
+    await db
+      .update(portfolios)
+      .set({ viewCount: sql`${portfolios.viewCount} + 1` })
+      .where(eq(portfolios.id, portfolioId));
+  }
+
   // Projects
   async getProjects(portfolioId: string): Promise<Project[]> {
     return await db
       .select()
       .from(projects)
       .where(eq(projects.portfolioId, portfolioId))
-      .orderBy(projects.order);
+      .orderBy(projects.order, desc(projects.lastUpdated));
   }
 
   async getProject(id: string): Promise<Project | undefined> {
