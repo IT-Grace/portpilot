@@ -88,18 +88,23 @@ app.use((req, res, next) => {
 // Auth routes
 app.get("/api/auth/signin/github", passport.authenticate("github"));
 
-app.get(
-  "/api/auth/github/callback",
-  passport.authenticate("github", {
-    failureRedirect: "/?error=auth_failed",
-    failureFlash: false,
-  }),
-  (req, res) => {
-    // Successful authentication, redirect to dashboard
-    console.log("Successfully authenticated user:", req.user);
-    res.redirect("/dashboard");
-  }
-);
+app.get("/api/auth/github/callback", (req, res, next) => {
+  passport.authenticate("github", (err: any, user: any, info: any) => {
+    if (err || !user) {
+      if (err) console.error("GitHub sign-in failed:", err);
+      const reason = info?.message === "suspended" ? "suspended" : "auth_failed";
+      return res.redirect(`/signin?error=${reason}`);
+    }
+    req.logIn(user, (loginErr) => {
+      if (loginErr) {
+        console.error("GitHub sign-in failed:", loginErr);
+        return res.redirect("/signin?error=auth_failed");
+      }
+      console.log("Successfully authenticated user:", user.handle);
+      res.redirect("/dashboard");
+    });
+  })(req, res, next);
+});
 
 app.get("/api/auth/signout", (req, res) => {
   req.logout((err) => {

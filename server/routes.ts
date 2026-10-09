@@ -238,9 +238,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Portfolio not found" });
       }
 
-      // Get portfolio
+      // Get portfolio (suspended accounts' portfolios are hidden)
       const portfolio = await storage.getPortfolio(user.id);
-      if (!portfolio || !portfolio.isPublic) {
+      if (!portfolio || !portfolio.isPublic || !user.isActive) {
         return res
           .status(404)
           .json({ error: "Portfolio not found or not public" });
@@ -1379,6 +1379,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
     async (req, res) => {
       try {
         const { userId } = req.params;
+
+        if (userId === (req.user as any).id) {
+          return res
+            .status(400)
+            .json({ error: "You can't suspend your own account" });
+        }
 
         const updatedUser = await storage.toggleUserActiveStatus(userId);
         if (!updatedUser) {

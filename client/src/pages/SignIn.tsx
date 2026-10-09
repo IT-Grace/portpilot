@@ -1,3 +1,4 @@
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -24,6 +25,15 @@ export default function SignIn() {
     "user"
   );
   const isDevelopment = import.meta.env.DEV;
+
+  // Set by the GitHub OAuth callback when sign-in fails
+  const signInError = new URLSearchParams(window.location.search).get("error");
+  const signInErrorMessage =
+    signInError === "suspended"
+      ? "Your account has been suspended. Please contact support."
+      : signInError
+      ? "GitHub sign-in didn't complete. Please try again."
+      : null;
 
   const handleGitHubSignIn = () => {
     // TODO: Implement NextAuth GitHub OAuth flow in backend
@@ -103,6 +113,12 @@ export default function SignIn() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
+            {signInErrorMessage && (
+              <Alert variant="destructive">
+                <AlertDescription>{signInErrorMessage}</AlertDescription>
+              </Alert>
+            )}
+
             <Button
               className="w-full gap-2 h-12"
               size="lg"

@@ -96,6 +96,11 @@ passport.use(
           where: eq(users.githubId, profile.id),
         });
 
+        if (user && !user.isActive) {
+          console.log("Blocked sign-in for suspended user:", user.handle);
+          return done(null, false, { message: "suspended" });
+        }
+
         if (user) {
           // Update existing user
           const [updatedUser] = await db
@@ -230,7 +235,8 @@ passport.deserializeUser(async (id: string, done) => {
     const user = await db.query.users.findFirst({
       where: eq(users.id, id),
     });
-    done(null, user);
+    // Suspended (or deleted) users are signed out on their next request
+    done(null, user && user.isActive ? user : false);
   } catch (error) {
     done(error, null);
   }
