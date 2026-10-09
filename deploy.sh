@@ -4,8 +4,14 @@
 # ============================================
 # This script automates the deployment process with safety checks
 # Usage: ./deploy.sh
+#
+# Order matters: the new image is built while the old version keeps serving,
+# the database is backed up while it's running, and the app is only restarted
+# once migrations have succeeded.
 
-set -e  # Exit on any error
+set -eo pipefail  # Exit on any error, including failures inside pipes
+
+COMPOSE="docker compose -f docker-compose.prod.yml"
 
 # Colors for output
 RED='\033[0;31m'
@@ -38,6 +44,18 @@ print_header() {
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 }
 
+# Printed whenever a step fails after the code has been updated
+print_rollback_help() {
+    echo ""
+    print_info "To roll back:"
+    echo "  1. git checkout $PREVIOUS_COMMIT"
+    echo "  2. $COMPOSE build app migrator"
+    echo "  3. If migrations ran, restore the backup:"
+    echo "       gunzip -c ${BACKUP_FILE:-backups/<pre-deploy backup>.sql.gz} | $COMPOSE exec -T database psql -U \${POSTGRES_USER:-portpilot} -d \${POSTGRES_DB:-portpilot}"
+    echo "     (restore into a freshly emptied database to avoid conflicts)"
+    echo "  4. $COMPOSE up -d app nginx redis"
+}
+
 # Ensure we're in the right directory
 if [ ! -f "docker-compose.prod.yml" ]; then
     print_error "docker-compose.prod.yml not found!"
@@ -52,13 +70,32 @@ if [ ! -f ".env" ]; then
     exit 1
 fi
 
+# Check required settings are present in .env and passed to the app container
+MISSING=()
+for VAR in DATABASE_URL POSTGRES_PASSWORD SESSION_SECRET GITHUB_CLIENT_ID GITHUB_CLIENT_SECRET GITHUB_CALLBACK_URL; do
+    if ! grep -qE "^${VAR}=.+" .env; then
+        MISSING+=("$VAR (in .env)")
+    fi
+done
+for VAR in SESSION_SECRET GITHUB_CLIENT_ID GITHUB_CLIENT_SECRET GITHUB_CALLBACK_URL DATABASE_URL; do
+    if ! grep -qE "^\s+${VAR}:" docker-compose.prod.yml; then
+        MISSING+=("$VAR (not passed to a service in docker-compose.prod.yml)")
+    fi
+done
+if [ ${#MISSING[@]} -gt 0 ]; then
+    print_error "Missing required configuration:"
+    for ITEM in "${MISSING[@]}"; do echo "   - $ITEM"; done
+    exit 1
+fi
+
 print_header "🚀 PortPilot Production Deployment"
 
 # Step 1: Pull latest code
 print_header "📥 Step 1: Pulling Latest Code"
 git fetch origin
 CURRENT_BRANCH=$(git branch --show-current)
-print_info "Current branch: $CURRENT_BRANCH"
+PREVIOUS_COMMIT=$(git rev-parse --short HEAD)
+print_info "Current branch: $CURRENT_BRANCH (at $PREVIOUS_COMMIT)"
 
 if [ "$CURRENT_BRANCH" != "main" ]; then
     print_warning "You are not on the 'main' branch!"
@@ -71,14 +108,23 @@ if [ "$CURRENT_BRANCH" != "main" ]; then
 fi
 
 git pull origin "$CURRENT_BRANCH"
-print_success "Code updated to latest version"
+NEW_COMMIT=$(git rev-parse --short HEAD)
+print_success "Code updated: $PREVIOUS_COMMIT → $NEW_COMMIT"
 
-# Step 2: Preview migrations
-print_header "📋 Step 2: Migration Preview"
-print_info "Checking for new migrations..."
-print_warning "Note: Migrations will be generated and applied automatically in Step 7"
-print_info "Current schema changes will be shown during migration execution"
-echo ""
+# Step 2: Show what's being deployed
+print_header "📋 Step 2: Changes Being Deployed"
+if [ "$PREVIOUS_COMMIT" = "$NEW_COMMIT" ]; then
+    print_info "No new commits (redeploying $NEW_COMMIT)"
+else
+    git log --oneline "$PREVIOUS_COMMIT..$NEW_COMMIT"
+    NEW_MIGRATIONS=$(git diff --name-only --diff-filter=A "$PREVIOUS_COMMIT" "$NEW_COMMIT" -- 'drizzle/*.sql')
+    if [ -n "$NEW_MIGRATIONS" ]; then
+        print_warning "New database migrations:"
+        echo "$NEW_MIGRATIONS" | sed 's/^/   - /'
+    else
+        print_info "No new database migrations"
+    fi
+fi
 
 # Step 3: Confirm deployment
 print_header "🤔 Step 3: Deployment Confirmation"
@@ -93,111 +139,97 @@ if [[ ! $REPLY =~ ^[Yy]$ ]]; then
     exit 1
 fi
 
-# Step 4: Stop running containers
-print_header "🛑 Step 4: Stopping Running Containers"
-print_info "Stopping current containers gracefully..."
-docker compose -f docker-compose.prod.yml down
-print_success "Containers stopped successfully"
+trap 'print_error "Deployment failed at line $LINENO"; print_rollback_help' ERR
 
-# Step 5: Build new images
-print_header "🔨 Step 5: Building Docker Images"
+# Step 4: Build new images while the current version keeps serving
+print_header "🔨 Step 4: Building Docker Images"
 print_info "Building images with no cache to ensure fresh build..."
-docker compose -f docker-compose.prod.yml build --no-cache
+print_info "The current version stays online during the build"
+$COMPOSE build --no-cache app migrator
 print_success "Docker images built successfully"
 
-# Step 6: Pre-deployment backup
-print_header "💾 Step 6: Pre-Deployment Backup"
+# Step 5: Pre-deployment backup (database must be running)
+print_header "💾 Step 5: Pre-Deployment Backup"
 print_info "Creating database backup..."
 mkdir -p backups
-BACKUP_FILE="backups/pre-deploy_$(date +%Y%m%d_%H%M%S).sql.gz"
-docker compose -f docker-compose.prod.yml exec -T database sh -c "pg_dump -U \${POSTGRES_USER:-portpilot} -d \${POSTGRES_DB:-portpilot}" | gzip > "$BACKUP_FILE"
+$COMPOSE up -d database
+$COMPOSE run --rm pre-deploy-backup
+BACKUP_FILE=$(ls -t backups/pre-deploy_*.sql.gz | head -1)
 
-if [ -f "$BACKUP_FILE" ]; then
-    print_success "Backup created: $BACKUP_FILE"
+# A failed pg_dump still produces a small gzip file, so check the contents.
+# (|| true: head closing the pipe early makes gunzip exit non-zero under pipefail)
+BACKUP_HEADER=$(gunzip -c "$BACKUP_FILE" 2>/dev/null | head -5 || true)
+if gzip -t "$BACKUP_FILE" && grep -q "PostgreSQL database dump" <<< "$BACKUP_HEADER"; then
+    print_success "Backup created and verified: $BACKUP_FILE"
     ls -lh "$BACKUP_FILE"
 else
-    print_error "Backup creation failed!"
+    print_error "Backup $BACKUP_FILE is empty or invalid - aborting before migrations"
     exit 1
 fi
 
-# Step 7: Run migrations
-print_header "🗄️  Step 7: Running Database Migrations"
+# Step 6: Run migrations (--no-deps: the backup above already ran)
+print_header "🗄️  Step 6: Running Database Migrations"
 print_info "Running migrations..."
-docker compose -f docker-compose.prod.yml run --rm migrator
-
-# Check if migration was successful
-if [ $? -ne 0 ]; then
-    print_error "Migration failed!"
-    print_error "Database backup is available in ./backups/ directory"
-    print_error "Check logs: docker logs portpilot-migrator"
-    exit 1
-fi
+$COMPOSE run --rm --no-deps migrator
 print_success "Migrations completed successfully"
 
-# Step 7.5: Seed demo user
-print_header "🌱 Step 7.5: Seeding Demo User"
+# Step 6.5: Seed demo user
+print_header "🌱 Step 6.5: Seeding Demo User"
 print_info "Creating demo user and portfolio (if not exists)..."
-docker compose -f docker-compose.prod.yml run --rm migrator npm run seed
-
-if [ $? -ne 0 ]; then
-    print_warning "Seeding failed - this is non-critical, continuing deployment"
-    print_info "You can manually seed later: docker compose -f docker-compose.prod.yml run --rm migrator npm run seed"
-else
+if $COMPOSE run --rm --no-deps migrator npm run seed; then
     print_success "Demo user seeded successfully"
+else
+    print_warning "Seeding failed - this is non-critical, continuing deployment"
+    print_info "You can manually seed later: $COMPOSE run --rm --no-deps migrator npm run seed"
 fi
 
-# Step 8: Validate schema
-print_header "🔍 Step 8: Validating Database Schema"
-docker compose -f docker-compose.prod.yml run --rm migrator npx tsx scripts/validate-schema.ts
-
-if [ $? -ne 0 ]; then
-    print_error "Schema validation failed!"
-    print_error "Please review the errors above and fix schema issues"
-    exit 1
-fi
+# Step 7: Validate schema
+print_header "🔍 Step 7: Validating Database Schema"
+$COMPOSE run --rm --no-deps migrator npx tsx scripts/validate-schema.ts
 print_success "Schema validation passed"
 
-# Step 9: Deploy application with zero-downtime
-print_header "🔄 Step 9: Deploying Application"
+# Step 8: Restart the application on the new image
+print_header "🔄 Step 8: Deploying Application"
 print_info "Starting services..."
-docker compose -f docker-compose.prod.yml up -d app nginx redis
-
+$COMPOSE up -d app nginx redis
 print_success "Services started"
 
-# Step 10: Health check
-print_header "🏥 Step 10: Health Check"
-print_info "Waiting for application to start (5 seconds)..."
-sleep 5
+trap - ERR
 
-print_info "Checking application health..."
-if curl -f -s http://localhost/api/health > /dev/null 2>&1; then
+# Step 9: Health check against the app itself (port 80 only redirects to HTTPS)
+print_header "🏥 Step 9: Health Check"
+print_info "Waiting for the application to become healthy (up to 90 seconds)..."
+HEALTHY=false
+for _ in $(seq 1 30); do
+    if curl -fsS http://localhost:3000/api/health > /dev/null 2>&1; then
+        HEALTHY=true
+        break
+    fi
+    sleep 3
+done
+
+if [ "$HEALTHY" = true ]; then
     print_success "Application health check passed!"
 else
-    print_warning "Health check failed - application may still be starting"
-    print_info "Check logs: docker compose -f docker-compose.prod.yml logs app"
-    
-    read -p "Continue despite health check failure? (y/N) " -n 1 -r
-    echo
-    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-        print_error "Deployment rollback initiated..."
-        docker compose -f docker-compose.prod.yml restart app
-        exit 1
-    fi
+    print_error "Application did not become healthy"
+    print_info "Check logs: $COMPOSE logs --tail=100 app"
+    print_rollback_help
+    exit 1
 fi
 
-# Step 11: Deployment summary
-print_header "📊 Step 11: Deployment Summary"
+# Step 10: Deployment summary
+print_header "📊 Step 10: Deployment Summary"
 echo ""
-docker compose -f docker-compose.prod.yml ps
+$COMPOSE ps
 echo ""
-
-print_success "Deployment completed successfully!"
+print_success "Deployed $NEW_COMMIT (previously $PREVIOUS_COMMIT)"
+print_info "Pre-deploy backup: $BACKUP_FILE"
 echo ""
 print_info "Useful commands:"
-echo "  • View logs:          docker compose -f docker-compose.prod.yml logs -f app"
-echo "  • Restart app:        docker compose -f docker-compose.prod.yml restart app"
-echo "  • Make user admin:    docker compose -f docker-compose.prod.yml run --rm migrator npx tsx scripts/make-admin.ts <handle>"
-echo "  • Validate schema:    docker compose -f docker-compose.prod.yml run --rm migrator npx tsx scripts/validate-schema.ts"
+echo "  • View logs:          $COMPOSE logs -f app"
+echo "  • Restart app:        $COMPOSE restart app"
+echo "  • Make user admin:    $COMPOSE run --rm --no-deps migrator npx tsx scripts/make-admin.ts <handle>"
+echo "  • Validate schema:    $COMPOSE run --rm --no-deps migrator npx tsx scripts/validate-schema.ts"
 echo "  • Check backups:      ls -lh backups/"
 echo ""
 print_success "🎉 PortPilot is now live!"
