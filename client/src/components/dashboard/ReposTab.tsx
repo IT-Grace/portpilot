@@ -66,6 +66,7 @@ export function ReposTab({ plan }: ReposTabProps) {
   const [editingProject, setEditingProject] = useState<Repo | null>(null);
   const [repos, setRepos] = useState<Repo[]>([]);
   const [loading, setLoading] = useState(true);
+  const [lastSync, setLastSync] = useState<Date | null>(null);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -128,6 +129,7 @@ export function ReposTab({ plan }: ReposTabProps) {
         const data = await response.json();
         const mergedRepos = mergeRepoData(data.projects, false);
         setRepos(mergedRepos);
+        setLastSync(data.lastSyncedAt ? new Date(data.lastSyncedAt) : null);
       } else {
         console.error("Failed to fetch dashboard data");
       }
@@ -138,7 +140,6 @@ export function ReposTab({ plan }: ReposTabProps) {
     }
   };
 
-  const lastSync = new Date(Date.now() - 1000 * 60 * 60 * 2);
   const selectedCount = repos.filter((r) => r.selected).length;
   const { maxProjects } = planLimits[plan];
 
@@ -221,8 +222,8 @@ export function ReposTab({ plan }: ReposTabProps) {
           const data = await dashboardResponse.json();
           console.log("Dashboard data after sync:", data.projects);
           const mergedRepos = mergeRepoData(data.projects, true);
-          console.log("Merged repos:", mergedRepos);
           setRepos(mergedRepos);
+          setLastSync(data.lastSyncedAt ? new Date(data.lastSyncedAt) : null);
         }
       } else {
         const errorData = await response.json().catch(() => ({}));
@@ -427,10 +428,11 @@ export function ReposTab({ plan }: ReposTabProps) {
           <div>
             <CardTitle>GitHub Sync</CardTitle>
             <CardDescription>
-              Last synced{" "}
-              {lastSync && !isNaN(lastSync.getTime())
-                ? formatDistanceToNow(lastSync, { addSuffix: true })
-                : "recently"}
+              {lastSync
+                ? `Last synced ${formatDistanceToNow(lastSync, {
+                    addSuffix: true,
+                  })}`
+                : "Not synced yet"}
             </CardDescription>
           </div>
           <Button

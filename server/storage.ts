@@ -18,7 +18,7 @@ import {
   type SyncJob,
   type User,
 } from "@shared/schema";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { db } from "./db";
 
 export interface IStorage {
@@ -41,6 +41,7 @@ export interface IStorage {
     portfolioId: string,
     isPublic: boolean
   ): Promise<Portfolio | undefined>;
+  incrementPortfolioViews(portfolioId: string): Promise<void>;
 
   // Projects
   getProjects(portfolioId: string): Promise<Project[]>;
@@ -184,6 +185,13 @@ export class DatabaseStorage implements IStorage {
       .where(eq(portfolios.id, portfolioId))
       .returning();
     return portfolio || undefined;
+  }
+
+  async incrementPortfolioViews(portfolioId: string): Promise<void> {
+    await db
+      .update(portfolios)
+      .set({ viewCount: sql`${portfolios.viewCount} + 1` })
+      .where(eq(portfolios.id, portfolioId));
   }
 
   // Projects

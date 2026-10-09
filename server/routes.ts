@@ -176,15 +176,38 @@ export async function registerRoutes(app: Express): Promise<Server> {
         0
       );
 
+      // Recent activity from real events: the last sync and recent analyses
+      const recentActivity = [
+        ...(portfolio?.lastSyncedAt
+          ? [
+              {
+                type: "sync",
+                message: `Synced ${projects.length} repositories from GitHub`,
+                time: portfolio.lastSyncedAt,
+              },
+            ]
+          : []),
+        ...projects
+          .filter((p) => p.lastAnalyzed)
+          .map((p) => ({
+            type: "analyze",
+            message: `Generated AI write-up for ${p.name}`,
+            time: p.lastAnalyzed!,
+          })),
+      ]
+        .sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime())
+        .slice(0, 5);
+
       const dashboardData = {
         user: {
           name: user.name,
           handle: user.handle,
           plan: user.plan,
         },
+        lastSyncedAt: portfolio?.lastSyncedAt ?? null,
         stats: {
-          totalProjects: projects.length,
-          totalViews: 0, // TODO: Implement view tracking
+          totalProjects: projects.filter((p) => p.selected).length,
+          totalViews: portfolio?.viewCount ?? 0,
           totalStars,
           totalForks,
           planName: user.plan === "PRO" ? "Pro" : "Free",
@@ -210,14 +233,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           stack: p.stack,
           selected: p.selected !== false, // Default to true if not set
         })),
-        recentActivity: [
-          // TODO: Implement activity tracking
-          {
-            type: "sync",
-            message: `Synced ${projects.length} repositories`,
-            time: "Recently",
-          },
-        ],
+        recentActivity,
       };
 
       res.json(dashboardData);
@@ -244,6 +260,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res
           .status(404)
           .json({ error: "Portfolio not found or not public" });
+      }
+
+      // Count the visit, unless it's the owner looking at their own page
+      if ((req.user as any)?.id !== user.id) {
+        await storage.incrementPortfolioViews(portfolio.id);
       }
 
       // Get projects (only selected ones for public portfolio), capped at the
@@ -486,6 +507,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           console.error(`Error syncing repo ${repo.name}:`, error);
         }
       }
+
+      await storage.updatePortfolio(portfolio.id, { lastSyncedAt: new Date() });
 
       const message = [
         syncedCount > 0 ? `${syncedCount} new repositories` : null,

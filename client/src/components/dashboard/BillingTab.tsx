@@ -23,13 +23,13 @@ export function BillingTab({ plan }: BillingTabProps) {
       "Basic statistics",
     ],
     pro: [
-      `Up to ${planLimits.PRO.maxProjects} projects`,
-      "All 4 themes",
-      "Custom domain",
-      "Priority sync",
-      "Advanced analytics",
-      "Remove PortPilot branding",
-      "Priority support",
+      { label: `Up to ${planLimits.PRO.maxProjects} projects` },
+      { label: "All 4 themes" },
+      { label: "Custom domain", comingSoon: true },
+      { label: "Priority sync", comingSoon: true },
+      { label: "Advanced analytics", comingSoon: true },
+      { label: "Remove PortPilot branding", comingSoon: true },
+      { label: "Priority support", comingSoon: true },
     ],
   };
 
@@ -176,7 +176,14 @@ export function BillingTab({ plan }: BillingTabProps) {
               {features.pro.map((feature, i) => (
                 <li key={i} className="flex items-start gap-3">
                   <Check className="h-5 w-5 text-primary shrink-0 mt-0.5" />
-                  <span className="text-sm font-medium">{feature}</span>
+                  <span className="text-sm font-medium">
+                    {feature.label}
+                    {feature.comingSoon && (
+                      <span className="ml-2 text-xs font-normal text-muted-foreground">
+                        Coming soon
+                      </span>
+                    )}
+                  </span>
                 </li>
               ))}
             </ul>
@@ -228,8 +235,8 @@ export function BillingTab({ plan }: BillingTabProps) {
           <div>
             <h4 className="font-medium mb-2">How does custom domain work?</h4>
             <p className="text-sm text-muted-foreground">
-              Pro users can connect a custom domain by adding a CNAME record pointing to our servers.
-              We provide step-by-step instructions in the Publishing tab.
+              Custom domains are coming soon for Pro users. You'll be able to point your
+              own domain at your portfolio, with setup instructions in the Publishing tab.
             </p>
           </div>
         </CardContent>

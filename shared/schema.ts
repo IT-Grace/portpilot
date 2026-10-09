@@ -58,6 +58,8 @@ export const portfolios = pgTable("portfolios", {
   isPublic: boolean("is_public").default(false).notNull(),
   customDomain: varchar("custom_domain"),
   showStats: boolean("show_stats").default(true).notNull(),
+  lastSyncedAt: timestamp("last_synced_at"),
+  viewCount: integer("view_count").default(0).notNull(),
   social: json("social").$type<{
     github?: string;
     x?: string;

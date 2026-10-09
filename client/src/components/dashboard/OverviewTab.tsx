@@ -16,6 +16,7 @@ import {
   Star,
   TrendingUp,
 } from "lucide-react";
+import { formatDistanceToNow } from "date-fns";
 import { useEffect, useState } from "react";
 import { Link } from "wouter";
 
@@ -141,7 +142,7 @@ export function OverviewTab() {
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-bold">{stats.totalViews}</div>
-            <p className="text-xs text-muted-foreground mt-1">This month</p>
+            <p className="text-xs text-muted-foreground mt-1">All time</p>
           </CardContent>
         </Card>
 
@@ -212,13 +213,20 @@ export function OverviewTab() {
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
+            {recentActivity.length === 0 && (
+              <p className="text-sm text-muted-foreground">
+                No activity yet. Sync your repositories to get started.
+              </p>
+            )}
             {recentActivity.map((activity, i) => (
               <div key={i} className="flex items-start gap-4">
                 <div className="h-2 w-2 rounded-full bg-primary mt-2" />
                 <div className="flex-1 space-y-1">
                   <p className="text-sm font-medium">{activity.message}</p>
                   <p className="text-xs text-muted-foreground">
-                    {activity.time}
+                    {formatDistanceToNow(new Date(activity.time), {
+                      addSuffix: true,
+                    })}
                   </p>
                 </div>
               </div>
