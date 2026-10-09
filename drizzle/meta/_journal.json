@@ -29,6 +29,13 @@
       "when": 1791504441576,
       "tag": "0003_add_portfolio_sync_and_views",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1791508251996,
+      "tag": "0004_ensure_admin_actions",
+      "breakpoints": true
     }
   ]
 }
